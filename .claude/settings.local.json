@@ -3,5 +3,8 @@
     "additionalDirectories": [
       "/Users/ada/prod/amc"
     ]
+  },
+  "enabledPlugins": {
+    "logfire@claude-plugins-official": true
   }
 }
