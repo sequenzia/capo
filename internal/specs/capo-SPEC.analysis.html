@@ -1,4 +1,462 @@
-# Capo PRD
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spec Analysis Review</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --bg-surface: #161b22;
+    --bg-elevated: #1c2128;
+    --border: #30363d;
+    --border-active: #58a6ff;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-heading: #f0f6fc;
+    --amber: #d29922;
+    --amber-bg: rgba(210, 153, 34, 0.12);
+    --green: #3fb950;
+    --green-bg: rgba(63, 185, 80, 0.12);
+    --red: #f85149;
+    --red-bg: rgba(248, 81, 73, 0.12);
+    --purple: #bc8cff;
+    --purple-bg: rgba(188, 140, 255, 0.12);
+    --blue: #58a6ff;
+    --blue-bg: rgba(88, 166, 255, 0.12);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 18px; color: var(--text-heading); font-weight: 600; }
+  .header-meta { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); }
+  .header-meta span { display: flex; align-items: center; gap: 4px; }
+
+  /* Dashboard */
+  .dashboard {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .stats { display: flex; gap: 24px; }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .stat-value { font-size: 24px; font-weight: 700; }
+  .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+  }
+  .stat-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+  /* Filter bar */
+  .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .filter-tabs { display: flex; gap: 2px; background: var(--bg); border-radius: 6px; padding: 2px; }
+  .filter-tab {
+    padding: 6px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .filter-tab:hover { color: var(--text); }
+  .filter-tab.active { background: var(--bg-elevated); color: var(--text); }
+  .filter-tab .count {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 11px;
+    background: var(--border);
+    padding: 0 6px;
+    border-radius: 10px;
+  }
+
+  select.severity-filter {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 28px 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+
+  /* Main layout */
+  .main { display: flex; height: calc(100vh - 140px); overflow: hidden; }
+
+  /* Left panel — spec content */
+  .spec-panel {
+    flex: 6;
+    overflow-y: auto;
+    padding: 24px;
+    border-right: 1px solid var(--border);
+  }
+  .spec-content {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .spec-content h1, .spec-content h2, .spec-content h3, .spec-content h4 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--text-heading);
+    margin: 20px 0 8px;
+    line-height: 1.3;
+  }
+  .spec-content h1 { font-size: 22px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .spec-content h2 { font-size: 18px; }
+  .spec-content h3 { font-size: 15px; }
+  .spec-content h4 { font-size: 14px; }
+  .spec-content strong { color: var(--text-heading); }
+  .spec-content code {
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  .spec-content ul, .spec-content ol { padding-left: 24px; margin: 4px 0; }
+  .spec-content li { margin: 2px 0; }
+
+  /* Annotated section */
+  .annotated-line {
+    border-left: 3px solid transparent;
+    padding-left: 8px;
+    margin-left: -11px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 0 4px 4px 0;
+  }
+  .annotated-line:hover { background: var(--bg-elevated); }
+  .annotated-line.severity-warning { border-left-color: var(--amber); }
+  .annotated-line.severity-critical { border-left-color: var(--purple); }
+  .annotated-line.severity-suggestion { border-left-color: var(--blue); }
+  .annotated-line.status-approved { border-left-color: var(--green); }
+  .annotated-line.status-rejected { border-left-color: var(--red); }
+  .annotated-line.selected { background: var(--bg-elevated); }
+
+  .annotation-marker {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+  .annotation-marker.severity-warning { background: var(--amber-bg); color: var(--amber); }
+  .annotation-marker.severity-critical { background: var(--purple-bg); color: var(--purple); }
+  .annotation-marker.severity-suggestion { background: var(--blue-bg); color: var(--blue); }
+
+  /* Editable blocks */
+  [contenteditable="true"] {
+    outline: none;
+    border: 1px dashed transparent;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    border-radius: 3px;
+    transition: border-color 0.15s;
+  }
+  [contenteditable="true"]:focus {
+    border-color: var(--border-active);
+    background: var(--bg-elevated);
+  }
+
+  /* Right panel — findings */
+  .findings-panel {
+    flex: 4;
+    overflow-y: auto;
+    padding: 16px;
+    background: var(--bg-surface);
+  }
+  .findings-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .finding-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .finding-card:hover { border-color: var(--border-active); }
+  .finding-card.selected { border-color: var(--border-active); box-shadow: 0 0 0 1px var(--border-active); }
+  .finding-card.status-approved { border-left: 3px solid var(--green); }
+  .finding-card.status-rejected { border-left: 3px solid var(--red); }
+
+  .finding-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  .finding-id { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+  .finding-title { font-size: 14px; font-weight: 600; color: var(--text-heading); margin-bottom: 4px; }
+
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .badge-critical { background: var(--purple-bg); color: var(--purple); }
+  .badge-warning { background: var(--amber-bg); color: var(--amber); }
+  .badge-suggestion { background: var(--blue-bg); color: var(--blue); }
+
+  .category-badge {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .finding-issue {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+
+  .finding-detail { margin-bottom: 10px; }
+  .finding-detail-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .finding-detail-text {
+    font-size: 13px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    background: var(--bg-elevated);
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .finding-detail-text.current { border-left: 3px solid var(--red); }
+  .finding-detail-text.proposed { border-left: 3px solid var(--green); }
+
+  .finding-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 500;
+    transition: all 0.15s;
+    background: var(--bg-elevated);
+    color: var(--text);
+  }
+  .btn:hover { border-color: var(--text-muted); }
+  .btn-approve { border-color: var(--green); color: var(--green); }
+  .btn-approve:hover { background: var(--green-bg); }
+  .btn-reject { border-color: var(--red); color: var(--red); }
+  .btn-reject:hover { background: var(--red-bg); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-primary:hover { opacity: 0.9; }
+
+  .comment-area {
+    width: 100%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 60px;
+    margin-top: 8px;
+  }
+  .comment-area:focus { outline: none; border-color: var(--border-active); }
+
+  .status-badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .status-pending { background: var(--amber-bg); color: var(--amber); }
+  .status-approved { background: var(--green-bg); color: var(--green); }
+  .status-rejected { background: var(--red-bg); color: var(--red); }
+
+  .finding-location {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  /* Prompt output panel */
+  .prompt-panel {
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+  }
+  .prompt-panel.hidden { display: none; }
+  .prompt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .prompt-header h3 { font-size: 14px; color: var(--text-heading); }
+  .prompt-actions { display: flex; gap: 8px; }
+  .prompt-content {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+
+  /* Notification toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--green);
+    color: var(--green);
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 1000;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.2s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-muted);
+  }
+  .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .main { flex-direction: column; height: auto; }
+    .spec-panel { border-right: none; border-bottom: 1px solid var(--border); max-height: 50vh; }
+    .findings-panel { max-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-left">
+    <h1 id="spec-name"></h1>
+  </div>
+  <div class="header-meta">
+    <span id="depth-level"></span>
+    <span id="analyzed-at"></span>
+  </div>
+</header>
+
+<!-- Dashboard -->
+<div class="dashboard">
+  <div class="stats" id="stats"></div>
+  <div class="filters">
+    <div class="filter-tabs" id="status-filters"></div>
+    <select class="severity-filter" id="severity-filter">
+      <option value="all">All Severities</option>
+      <option value="critical">Critical</option>
+      <option value="warning">Warning</option>
+      <option value="suggestion">Suggestion</option>
+    </select>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="main">
+  <div class="spec-panel">
+    <div class="spec-content" id="spec-content"></div>
+  </div>
+  <div class="findings-panel">
+    <div class="findings-list" id="findings-list"></div>
+  </div>
+</div>
+
+<!-- Prompt output -->
+<div class="prompt-panel hidden" id="prompt-panel">
+  <div class="prompt-header">
+    <h3>Prompt from Approved Changes (<span id="approved-count">0</span>)</h3>
+    <div class="prompt-actions">
+      <button class="btn btn-primary" onclick="copyPrompt()">Copy Prompt</button>
+      <button class="btn" onclick="downloadSpec()">Download Modified Spec</button>
+    </div>
+  </div>
+  <div class="prompt-content" id="prompt-content"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Raw spec markdown (read by data injection below) -->
+<script type="text/plain" id="spec-md-raw"># Capo PRD
 
 **Author**: Stephen Sequenzia
 **Date**: 2026-05-10
@@ -51,7 +509,7 @@ No off-the-shelf product fits: agent SDKs cover the agent loop but not unbounded
 2. **One conversation surface, many channels.** Inbound iMessage and Discord messages reach Capo via AMC with the same shape; outbound replies use the same path.
 3. **Delegation is a tool call.** Spawning Claude Code or Codex is just another tool the agent can choose, with full telemetry and approval support.
 4. **Predictable cost.** Daily soft/hard caps prevent surprises; cost is observable per delegation.
-5. **Readable.** ~800 lines of Python + a handful of markdown files in `souls/` and `prompts/`.
+5. **Readable.** ~500 lines of Python + a handful of markdown files in `souls/` and `prompts/`.
 
 ### 3.2 Success Metrics
 
@@ -190,7 +648,7 @@ flowchart LR
 - [ ] On boot, `capo/agent.py` reads `souls/<active>.md` (path from `config.toml [soul] active/dir`) and prepends it to `prompts/system.md`.
 - [ ] The composite instructions string is constructed once per process; agent is created with `instructions=<composite>`.
 - [ ] SOUL is **never** included in delegation briefs; `tools/claude_code.py` and `tools/codex.py` build prompts from `prompts/delegation_brief.md` + the structured Brief model only.
-- [ ] Default model is read from `config.toml [models] default`; configurable via `config.toml` edit + restart. No per-run override in V1.
+- [ ] Default model is read from `config.toml [models] default`; configurable per-run override is supported.
 - [ ] At least two soul files (`default.md`, `concise.md`) exist as exemplars; switching is a config edit + restart.
 - [ ] Unit test verifies SOUL absent from rendered delegation prompts.
 
@@ -222,7 +680,7 @@ flowchart LR
 - [ ] **Dedupe on `X-AMC-Delivery-Id`.** Maintain an LRU keyed by delivery-id covering at least 15 minutes of retries. Duplicate delivery-id returns `204` without enqueue.
 - [ ] **Per-`channel_id` worker queue.** One asyncio worker per channel processes envelopes in arrival order. Different channels run in parallel.
 - [ ] **Boot-time unread sweep.** Before serving the webhook, call `GET /messages/unread` on AMC, enqueue any unacked envelopes through the same dispatcher, then start the FastAPI server.
-- [ ] Worker calls `amc.send` then `amc.mark_read` after the agent run completes; both are routed through `transport/amc_client.py`. `amc.mark_read` calls are idempotent on `message_id` and safe to retry.
+- [ ] Worker calls `amc.send` then `amc.mark_read` after the agent run completes; both are routed through `transport/amc_client.py`.
 - [ ] `X-Agent-ID: capo` header set on every outbound AMC request.
 
 #### Edge Cases
@@ -242,7 +700,7 @@ flowchart LR
 | AMC `RATE_LIMITED` | None (transparent) | Sleep `Retry-After`, retry send |
 | AMC `PLATFORM_AUTH` | "Capo can't reach AMC — check your bearer token" | Log Logfire alert, do not retry |
 | AMC `CHANNEL_NOT_FOUND` | "I can't reach that channel anymore" | Mark delegation orphaned, do not retry |
-| AMC `ATTACHMENT_TOO_LARGE` (outbound `send` only — V1 does not handle inbound attachments) | "That attachment is too big for the channel" | Drop attachment, send text only |
+| AMC `ATTACHMENT_TOO_LARGE` | "That attachment is too big for the channel" | Drop attachment, send text only |
 
 ---
 
@@ -302,7 +760,7 @@ flowchart LR
 
 **Priority**: P0 (Critical)
 **Complexity**: Low
-**Phase**: 2
+**Phase**: 2 (status/output/kill), 2 (list)
 
 #### User Story
 
@@ -336,7 +794,7 @@ flowchart LR
 - [ ] **Restart contract.** On process restart, DBOS re-enters the workflow from its last completed step. The workflow's first step on re-entry is to **re-spawn the subagent** via `claude --resume <session_id>` (CC) or the Codex equivalent. **Never re-attach by PID.**
 - [ ] On completion, the workflow calls `summarize_run` (a `@DBOS.step` that invokes an LLM call producing a one-paragraph summary) and stores it on the `delegations` row.
 - [ ] On completion, the workflow calls `notify_user` (a `@DBOS.step`) which sends the summary via `amc.send` using `parent_thread_id` from the delegations row. `notify_user` does **not** re-enter the agent loop.
-- [ ] **All `@DBOS.step` calls with external side effects — subprocess spawn, `amc.send`, and any DB insert not already wrapped by the `BEGIN IMMEDIATE` retry helper — generate and persist an idempotency key in the workflow's step state so retries are safe.**
+- [ ] **All `@DBOS.step` calls with external side effects (subprocess spawn, `amc.send`, DB inserts other than within `BEGIN IMMEDIATE` retry helper) generate and persist an idempotency key in the workflow's step state so retries are safe.**
 - [ ] DBOS state lives in `~/.capo/dbos.db` (separate SQLite file from `state.db`).
 
 #### Edge Cases
@@ -365,7 +823,7 @@ flowchart LR
 - [ ] History stored using Pydantic AI's `ModelMessage` serialization directly. Schema: `(thread_id TEXT, user_id TEXT, ts TIMESTAMP, message_index INT, model_message_json TEXT)`.
 - [ ] `thread_id` = `amc:<channel_id>`. Composite primary key `(thread_id, message_index)`.
 - [ ] On each turn, load all messages for `thread_id` in the **current session** (see Session Control below), feed into `agent.run(... message_history=...)`.
-- [ ] **Session boundary.** A session ends only when the user explicitly starts a new one (slash command `/new` or NL equivalent) — `sessions` table tracks `(thread_id, session_id, started_at, ended_at, compacted_to_message_index)`. V1 imposes no implicit timeout; idle-timeout-based rotation is a future iteration.
+- [ ] **Session boundary.** A session ends when the user explicitly starts a new one (slash command `/new` or NL equivalent) — `sessions` table tracks `(thread_id, session_id, started_at, ended_at, compacted_to_message_index)`.
 - [ ] **Compaction.** When the current session's history tokens exceed `compaction.threshold_tokens` (default 100,000): identify the oldest 50% of messages; call a cheap model (`config.models.router`) to summarize them into a single system message; **retain all messages that reference an active delegation handle (`cc-<id>` or `codex-<id>`) verbatim**, regardless of age; persist the compacted history; log a Logfire span `capo.memory.compact`.
 - [ ] **Active delegation handle** = any delegation in `running` or `pending_approval` state at compaction time.
 - [ ] User can read recent history via `/status` (current session message count and approximate token count).
@@ -389,7 +847,7 @@ flowchart LR
   2. Any `delegate_*` call where `repo_path` is outside `projects_root`.
   3. Any `kill_delegation` call.
 - [ ] Implementation: each guarded action wraps the underlying logic in a DBOS workflow that does `DBOS.recv(approval_id, timeout=approval.timeout_seconds)`.
-- [ ] `approvals` table mirrors workflow state: `(approval_id TEXT PK, user_id, thread_id, action_kind, action_payload_json, status, created_at, resolved_at, choice, reason)`. Approvals link to delegations (when applicable) only through `action_payload_json`; there is no foreign key from `approvals` to `delegations`.
+- [ ] `approvals` table mirrors workflow state: `(approval_id TEXT PK, user_id, thread_id, action_kind, action_payload_json, status, created_at, resolved_at, choice, reason)`.
 - [ ] On guarded action:
   1. Insert `approvals` row with `status='pending'`.
   2. Send AMC question containing `approval_id` and labeled options (`approve`/`deny`).
@@ -422,15 +880,14 @@ If ambiguous, ask a clarifying question.
 
 #### Acceptance Criteria
 
-- [ ] **Main agent model selection.** Capo's main agent uses `config.models.default` on every run. Changing the default is a `config.toml` edit + restart in V1.
+- [ ] **Main agent model selection.** Capo's main agent uses `config.models.default` on every run unless explicitly overridden by the user.
 - [ ] **Subagent model selection.** When the main agent calls `delegate_to_claude_code` or `delegate_to_codex`, it MAY include a `model` field on the brief. If absent, the subagent uses `config.models.subagents.claude_code` or `config.models.subagents.codex` respectively (with their own defaults).
 - [ ] **Cost accounting.** A `cost_tracker` reads Logfire's per-run cost (or a custom per-call accumulator) and persists daily totals to a `daily_costs` table `(date, model, usd_total)`.
 - [ ] **Pre-tool-call hook.** Before every `agent.run` and every `delegate_*` call, the hook checks the day's running total against `budget.soft_daily_usd` and `budget.hard_daily_usd`.
 - [ ] **Soft cap behavior.** On crossing soft cap, swap `config.models.default` → `config.models.router` in-memory for the remainder of the day; send a one-line heads-up via AMC to `budget.notify_channel`.
-- [ ] **Hard cap behavior.** On crossing hard cap, `capo.run` short-circuits with a "budget exceeded — reply 'override' to continue today" message. The dispatcher pre-parses inbound text (case-insensitive exact match on `override` or slash command `/override`) BEFORE the agent loop; on match, persist a row in `budget_overrides (date, user_id)` scoped to the current `user_id`, which unlocks the rest of the day and resets at local midnight.
+- [ ] **Hard cap behavior.** On crossing hard cap, `capo.run` short-circuits with a "budget exceeded — reply 'override' to continue today" message. Override unlocks the rest of the day.
 - [ ] **Resets at local midnight.**
 - [ ] **Delegation costs tracked separately.** Per-delegation cost is logged on the `delegations` row and surfaced in the completion notification, but does NOT count against Capo's daily total in V1 (capped separately per-delegation in a later spec).
-- [ ] **Reconciliation.** Canonical cost source is Logfire (or the per-call accumulator when Logfire is unavailable). A nightly reconciliation step emits a `capo.budget.reconcile` span with `accumulator_usd`, `logfire_usd`, `drift_usd`. The ±$1 requirement in §6.4 is measured against this span.
 
 ---
 
@@ -509,7 +966,7 @@ If ambiguous, ask a clarifying question.
   - `db` — `SELECT 1` against `state.db`.
   - `dbos` — Connection to DBOS state DB succeeds.
   - `amc` — Latest AMC ping or last successful send within configured staleness window (default 5 min).
-  - `dispatcher` — Workers alive, queue depth < `concurrency.queue_depth_max` (default 100 per channel worker; see §15.3).
+  - `dispatcher` — Workers alive, queue depth < configured max.
 
 ---
 
@@ -528,7 +985,7 @@ If ambiguous, ask a clarifying question.
 - [ ] **Heartbeat.** On crossing each configurable threshold (default 15 min, 1 hr, 4 hr), the workflow sends a one-line milestone update to `parent_thread_id`.
 - [ ] **On-demand.** User asking "what's going on with X" routes to `check_delegation_status`; agent reply summarizes.
 - [ ] **Final notification.** Always sent on completion regardless of duration.
-- [ ] All proactive sends use idempotency keys derived from `(delegation_id, str(threshold_seconds))`, where the threshold list is captured from config at delegation start time and frozen on the `delegations` row so config edits don't affect in-flight idempotency.
+- [ ] All proactive sends use idempotency keys derived from `(delegation_id, milestone)`.
 
 ## 6. Non-Functional Requirements
 
@@ -587,7 +1044,7 @@ If ambiguous, ask a clarifying question.
 | `capo.amc.webhook.in` | Inbound webhook handler | `delivery_id`, `channel_id`, `signature_ok`, `dedupe_hit` |
 | `capo.dispatcher.handle` | Per-channel worker turn | `thread_id`, `user_id`, `message_id` |
 | `capo.agent.run` | Pydantic AI agent run | `thread_id`, `user_id`, `model`, `tokens_in`, `tokens_out`, `cost_usd` |
-| `capo.tool.<name>` | Tool execution | `tool_name`, `result_status`. `<name>` is the agent-facing tool name as registered with Pydantic AI (snake_case), e.g., `capo.tool.delegate_to_claude_code`, `capo.tool.session_new`. |
+| `capo.tool.<name>` | Tool execution | `tool_name`, `result_status` |
 | `capo.delegation.<agent>.spawn` | Subprocess spawn step | `delegation_id`, `agent`, `model`, `pid` |
 | `capo.delegation.<agent>.monitor` | DBOS workflow body | `delegation_id`, `step_name` |
 | `capo.delegation.<agent>.complete` | Completion step | `delegation_id`, `runtime_s`, `cost_usd`, `status` |
@@ -668,7 +1125,7 @@ flowchart TD
 | Agent framework | Pydantic AI | Native DI, tool registration, durable adapters, OTel-native instrumentation |
 | Durable execution | DBOS | Lightest option; SQLite-backed state; supports `DBOS.recv` for approval gates |
 | State store | SQLite (two files) | `state.db` for app state, `dbos.db` for workflow state |
-| Migrations | Alembic | Alembic manages `state.db` only — DBOS owns its `dbos.db` schema |
+| Migrations | Alembic | Conventional, supports both SQLite files via two configs |
 | HTTP server | FastAPI | Minimal webhook listener; type-driven validation |
 | Settings | Pydantic Settings | Validates `config.toml` + `.env` at boot; fail-fast on misconfig |
 | Observability | Pydantic Logfire | One-line setup; cost telemetry; OTel-native if backend swap needed |
@@ -690,6 +1147,7 @@ erDiagram
     USERS ||--o{ DAILY_COSTS : accrues
     SESSIONS ||--o{ CONVERSATION_HISTORY : "scopes"
     DELEGATIONS ||--o{ DELEGATION_OUTPUT : streams
+    APPROVALS }o--|| DELEGATIONS : "gates (optional)"
 
     USERS {
         TEXT user_id PK
@@ -750,7 +1208,7 @@ erDiagram
     DAILY_COSTS {
         TEXT date PK
         TEXT model PK
-        TEXT user_id PK,FK
+        TEXT user_id FK
         REAL usd_total
     }
 ```
@@ -843,16 +1301,6 @@ CREATE TABLE daily_costs (
     PRIMARY KEY (date, model, user_id)
 );
 ```
-
-#### Retry Helper Contract
-
-The `BEGIN IMMEDIATE` retry helper wraps every write path against `state.db`. Contract:
-
-- On `sqlite3.OperationalError` whose message matches `database is locked`, retry with exponential backoff (initial 50ms, factor 2, jitter ±25%) capped at the `busy_timeout=5000ms` total wall time.
-- On exhausting the retry budget, re-raise as `StoreUnavailable` (a typed exception surfaced to callers).
-- Non-lock `OperationalError` and other exceptions propagate immediately without retry.
-
-This helper is the canonical reference for the "retry helper" mentioned in §5.6, §6.1, and §7.6.
 
 #### Pydantic Domain Models
 
@@ -1088,7 +1536,7 @@ claude --resume <session_id> \
 
 #### Integration: Codex CLI
 
-Identical lifecycle; specifics finalized after spike S-1 (session resume mechanism). **Spec amendment is a Phase 4 entry criterion**: §5.4 and §7.5 must be updated with the resolved Codex spawn invocation, event-stream contract, and resume mechanism (or workaround) before Phase 4 deliverables begin.
+Identical lifecycle; specifics finalized after spike S-1 (session resume mechanism).
 
 ### 7.6 Technical Constraints
 
@@ -1160,7 +1608,7 @@ Phases are vertical slices. Each phase is independently demoable and ships with 
 | **S-3: Claude Code JSON event schema** | Which event types and fields can we depend on for status, session_id capture, completion? Schema stability across recent CC versions? | Phase 2 | Event parser spec + minimum CC version pin |
 | **S-4: AMC webhook end-to-end** | Validate HMAC verification, dedupe behavior under retry, mark_read idempotency, error code surfacing against a real AMC instance. | Phase 1 | Smoke-test harness reusable across phases |
 
-Each spike produces a short markdown findings document committed under `internal/specs/spikes/`.
+Each spike produces a short markdown findings document committed under `specs/spikes/`.
 
 ---
 
@@ -1236,7 +1684,7 @@ Each spike produces a short markdown findings document committed under `internal
 
 | Deliverable | Description | Tasks | Dependencies |
 |-------------|-------------|-------|--------------|
-| DBOS configuration | Configure DBOS to use `~/.capo/dbos.db` (DBOS manages its own schema) | `capo/workflows/__init__.py` | Settings |
+| DBOS configuration | Configure DBOS to use `~/.capo/dbos.db`; migrations | `capo/workflows/__init__.py`, Alembic config for dbos.db | Settings |
 | `monitor_delegation` workflow | Workflow body: read events, persist via batched buffer, check returncode | `capo/workflows/delegation.py` | DBOS configured |
 | Idempotency framework | Step idempotency key generator + persistence; `amc.send` honors `Idempotency-Key` already | `capo/workflows/_idempotency.py` | — |
 | Restart resume contract | On workflow re-entry, re-spawn CC via `claude --resume <session_id>`; on failure, mark `failed` and notify | `capo/workflows/delegation.py` | Session ID capture from Phase 2 |
@@ -1342,7 +1790,7 @@ Each spike produces a short markdown findings document committed under `internal
 | 3 | At t+45s, `kill -TERM` Capo | Process exits; subprocess survives (orphaned) |
 | 4 | `launchctl kickstart` Capo | Process restarts; DBOS resumes workflow |
 | 5 | Resume re-spawns CC with `--resume <id>` | CC continues from prior session |
-| 6 | CC eventually completes | Workflow runs `summarize_run` + `notify_user`; AMC mock records exactly one `POST /messages/send` call for the completion notification (verified via `Idempotency-Key` header and call count) |
+| 6 | CC eventually completes | Workflow runs `summarize_run` + `notify_user`; AMC receives completion message exactly once |
 | 7 | User asks `/status` | No running delegations; last entry shows the completed run with cost |
 
 ### 10.3 Performance Test Plan
@@ -1372,7 +1820,7 @@ V1 keeps flagging minimal. Where a behavior switch is genuinely needed:
 
 ### 11.3 Monitoring & Alerting
 
-Logfire alerts (configured against the Logfire alerts API):
+Logfire alerts (configured via `mcp__plugin_logfire_logfire__alert_create`):
 
 | Metric | Threshold | Channel |
 |--------|-----------|---------|
@@ -1455,12 +1903,6 @@ None. Single-operator project. AMC is owned by the same operator but lives in it
 | **Thread** | A conversation channel keyed `amc:<channel_id>`. |
 | **Worktree** | A git worktree at `~/.capo/workspaces/<delegation_id>` providing isolated working directory for a subagent. |
 | **Approval workflow** | DBOS workflow that does `DBOS.recv(approval_id)` to durably wait for user response before executing a guarded action. |
-| **Litestream** | Continuous-WAL replication daemon for SQLite; streams `state.db` to local + cloud bucket. |
-| **WAL** | SQLite Write-Ahead Log journal mode; enables concurrent readers + single writer. |
-| **HMAC** | Keyed hash signature used to authenticate AMC webhook payloads. |
-| **Alembic** | Schema migration tool for `state.db`; one initial migration per phase as needed. |
-| **Pydantic AI** | Agent framework Capo uses for tool registration, dependency injection, and OTel-native instrumentation. |
-| **Logfire** | Pydantic's observability platform; receives traces, costs, and alerts per the §6.5 taxonomy. |
 
 ### 15.2 References
 
@@ -1497,11 +1939,10 @@ active = "default"
 dir    = "souls"
 
 [amc]
-base_url              = "http://127.0.0.1:8080"
-agent_id              = "capo"
-listen_host           = "127.0.0.1"
-listen_port           = 8090
-max_boot_wait_seconds = 60
+base_url    = "http://127.0.0.1:8080"
+agent_id    = "capo"
+listen_host = "127.0.0.1"
+listen_port = 8090
 
 [agents.claude_code]
 binary = "claude"
@@ -1536,10 +1977,9 @@ timeout_seconds = 1800
 [heartbeat]
 intervals_seconds = [900, 3600, 14400]
 
-[users.owner]
+[users.user_id_default]
 amc_senders = ["+15551234567", "discord:user:123"]
 display_name = "Owner"
-# Note: the TOML key after `users.` is the literal `user_id` written to every domain table.
 
 [observability]
 logfire_enabled = true
@@ -1553,4 +1993,637 @@ logfire_enabled = true
 
 ---
 
-*Document generated by SDD Tools*
+*Document generated by SDD Tools*</script>
+
+<script>
+// === DATA INJECTION ===
+const SPEC_CONTENT = { path: "/Users/ada/dev/repos/capo/internal/specs/capo-SPEC.md", name: "Capo PRD", depthLevel: "Full-Tech", analyzedAt: "2026-05-10 12:00", content: document.getElementById('spec-md-raw').textContent };
+const FINDINGS_DATA = [
+  {
+    "id": "FIND-001",
+    "title": "ERD vs SQL primary-key mismatch on daily_costs",
+    "category": "Inconsistencies",
+    "severity": "critical",
+    "location": "Section 7.3 Data Models (ERD line 750-755 vs SQL line 838-844)",
+    "lineNumber": 752,
+    "currentText": "    DAILY_COSTS {\n        TEXT date PK\n        TEXT model PK\n        TEXT user_id FK\n        REAL usd_total\n    }",
+    "issue": "The Mermaid ERD declares daily_costs PK as (date, model) with user_id only as FK, but the canonical SQL DDL declares PRIMARY KEY (date, model, user_id). The two representations of the same table disagree on the primary key shape.",
+    "impact": "A code generator or developer reading the ERD will believe (date, model) is unique per user, but the SQL allows the same (date, model) to repeat across users. Building queries or migrations from the ERD will produce subtly broken behavior.",
+    "proposedText": "    DAILY_COSTS {\n        TEXT date PK\n        TEXT model PK\n        TEXT user_id PK,FK\n        REAL usd_total\n    }",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-002",
+    "title": "Goal 5 conflicts with success metric for LOC (500 vs 800)",
+    "category": "Inconsistencies",
+    "severity": "critical",
+    "location": "Section 3.1 Primary Goals Goal 5 (line 54) vs Section 3.2 Success Metrics (line 65)",
+    "lineNumber": 54,
+    "currentText": "5. **Readable.** ~500 lines of Python + a handful of markdown files in `souls/` and `prompts/`.",
+    "issue": "Goal 5 targets ~500 lines of Python while the measurable success metric on line 65 targets < ~800 LOC at Phase 5 close. The two numbers describe the same thing but disagree by 60%, so the 'Readable' goal becomes unverifiable.",
+    "impact": "Implementation reviewers will not know whether to enforce the 500 or 800 ceiling. Phase 5 sign-off (which references the success metric) and the Primary Goal cannot both be true.",
+    "proposedText": "5. **Readable.** ~800 lines of Python + a handful of markdown files in `souls/` and `prompts/`.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-003",
+    "title": "Cost-cap 'override' reply mechanism is undefined",
+    "category": "Missing Information",
+    "severity": "warning",
+    "location": "Section 5.9 Cost Caps + Model Routing (line 430)",
+    "lineNumber": 430,
+    "currentText": "- [ ] **Hard cap behavior.** On crossing hard cap, `capo.run` short-circuits with a \"budget exceeded — reply 'override' to continue today\" message. Override unlocks the rest of the day.",
+    "issue": "Section 5.9 references an 'override' reply that unlocks the day, but no spec exists for how it is parsed, scoped, persisted, or expired. Section 5.10's slash-command list does not include /override, and no NL-routing mechanism is documented for this case. Section 11.4 also references 'override via override reply' without further detail.",
+    "impact": "The hard-cap path is unimplementable as written — case sensitivity, exact match vs substring, thread scoping, persistence, and reset behavior all need to be decided. This is a P1 acceptance criterion blocking Phase 5.",
+    "proposedText": "- [ ] **Hard cap behavior.** On crossing hard cap, `capo.run` short-circuits with a \"budget exceeded — reply 'override' to continue today\" message. The dispatcher pre-parses inbound text (case-insensitive exact match on 'override' or slash command '/override') BEFORE the agent loop; on match, persist a row in `budget_overrides (date, user_id)` scoped to the current user_id, which unlocks the rest of the day and resets at local midnight.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-004",
+    "title": "`BEGIN IMMEDIATE` retry helper is referenced but never defined",
+    "category": "Missing Information",
+    "severity": "warning",
+    "location": "Section 5.6 line 339, Section 7.6 line 1090, Section 9.1 line 1168",
+    "lineNumber": 1090,
+    "currentText": "| SQLite WAL single-writer | Concurrent writes contend | WAL + `BEGIN IMMEDIATE` + `busy_timeout=5000` + retry helper |",
+    "issue": "The `BEGIN IMMEDIATE` retry helper is referenced in three places (5.6 idempotency clause, 7.6 mitigation column, 9.1 deliverable) but no acceptance criteria or signature define its retry budget, backoff strategy, or exception-translation. Section 6.1 promises 'Zero SQLITE_BUSY returned to user; retries internally' — that requirement is unverifiable without the helper's spec.",
+    "impact": "Phase 1 deliverable 'SQLite hardening' cannot be checkpoint-gated without knowing what 'retries internally' actually means (how many tries, what backoff, what eventual error surface).",
+    "proposedText": "Add a subsection under Section 7.3 or Section 9.1 specifying: 'Retry helper contract: on sqlite3.OperationalError matching `database is locked`, retry up to N times with exponential backoff capped at busy_timeout (5s) total wall time, then re-raise as StoreUnavailable.' Reference the helper consistently from §5.6, §6.1, §7.6.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-005",
+    "title": "[users.user_id_default] TOML key syntax does not match §5.11 resolution behavior",
+    "category": "Inconsistencies",
+    "severity": "warning",
+    "location": "Section 15.3 Configuration Reference (line 1522) vs Section 5.11 (lines 472-476)",
+    "lineNumber": 1522,
+    "currentText": "[users.user_id_default]\namc_senders = [\"+15551234567\", \"discord:user:123\"]\ndisplay_name = \"Owner\"",
+    "issue": "Section 5.11 says config.toml [users] table maps AMC sender IDs to internal user_id values. The canonical TOML uses [users.user_id_default] as the section header. It's unclear whether 'user_id_default' is meant to be the literal user_id (in which case domain tables get user_id='user_id_default') or a placeholder. Neither §5.11 nor §15.3 says which.",
+    "impact": "A developer wiring up sender resolution will not know whether to use the TOML sub-table key as the user_id directly, or to look up some inner field. The fact that the sub-table contains display_name (not user_id) suggests the key IS the user_id, but this is unstated.",
+    "proposedText": "[users.owner]\namc_senders = [\"+15551234567\", \"discord:user:123\"]\ndisplay_name = \"Owner\"\n# Note: the TOML key after `users.` is the literal `user_id` written to every domain table.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-006",
+    "title": "Spike findings path `specs/spikes/` does not match actual spec location",
+    "category": "Inconsistencies",
+    "severity": "warning",
+    "location": "Section 9.0 Spikes (line 1153)",
+    "lineNumber": 1153,
+    "currentText": "Each spike produces a short markdown findings document committed under `specs/spikes/`.",
+    "issue": "Spec lives at internal/specs/capo-SPEC.md, but the spikes section refers to `specs/spikes/` (no `internal/` prefix). The recent refactor commit moved the spec to the `internal/` directory, but this reference was not updated.",
+    "impact": "Spike findings will be created in a non-existent or wrong directory; cross-references from §5.4, §5.6, §7.3, §7.5 to spike outputs will not resolve.",
+    "proposedText": "Each spike produces a short markdown findings document committed under `internal/specs/spikes/`.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-007",
+    "title": "Health check `dispatcher` references non-existent 'configured max' for queue depth",
+    "category": "Missing Information",
+    "severity": "warning",
+    "location": "Section 5.12 Health Check Endpoint (line 511)",
+    "lineNumber": 511,
+    "currentText": "  - `dispatcher` — Workers alive, queue depth < configured max.",
+    "issue": "Acceptance criterion references a 'configured max' for dispatcher queue depth, but the canonical config in §15.3 only contains concurrency.max_delegations — there is no concurrency.queue_depth_max defined anywhere. max_delegations controls concurrent subagent runs, not dispatcher queue depth.",
+    "impact": "The health check cannot be implemented as written. A default ceiling and a config key need to exist before §5.12 can be checkpoint-gated in Phase 5.",
+    "proposedText": "  - `dispatcher` — Workers alive, queue depth < `concurrency.queue_depth_max` (default 100 per channel worker; see §15.3).",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-008",
+    "title": "`max_boot_wait` is referenced but absent from canonical config",
+    "category": "Missing Information",
+    "severity": "warning",
+    "location": "Section 5.2 Edge Cases table (line 234), Section 7.5 (line 1057) vs Section 15.3 (no entry)",
+    "lineNumber": 1487,
+    "currentText": "[amc]\nbase_url    = \"http://127.0.0.1:8080\"\nagent_id    = \"capo\"\nlisten_host = \"127.0.0.1\"\nlisten_port = 8090",
+    "issue": "Both §5.2 (edge case 'AMC offline at boot') and §7.5 cite max_boot_wait (default 60s) as configurable for the unread sweep, but the [amc] section in §15.3 has no max_boot_wait field. The spec promises configurability without exposing the field.",
+    "impact": "Boot-time unread sweep cannot be tuned without source edits; the Pydantic Settings validator referenced in §6.2 won't know the field.",
+    "proposedText": "[amc]\nbase_url             = \"http://127.0.0.1:8080\"\nagent_id             = \"capo\"\nlisten_host          = \"127.0.0.1\"\nlisten_port          = 8090\nmax_boot_wait_seconds = 60",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-009",
+    "title": "ERD APPROVALS-to-DELEGATIONS relationship has no SQL counterpart",
+    "category": "Inconsistencies",
+    "severity": "warning",
+    "location": "Section 7.3 ERD (line 692) vs CREATE TABLE approvals (lines 824-835)",
+    "lineNumber": 692,
+    "currentText": "    APPROVALS }o--|| DELEGATIONS : \"gates (optional)\"",
+    "issue": "ERD declares an optional gating relationship between approvals and delegations, but the approvals SQL table has no delegation_id column or FK — only an opaque action_payload_json blob and action_kind. The declared relationship is not implementable from the schema.",
+    "impact": "A reader using the ERD to plan queries (e.g., 'show all approvals for delegation X') will find no direct path; they'd have to JSON-extract from action_payload_json. The ERD overstates the schema's expressivity.",
+    "proposedText": "Option A: remove the line entirely from the ERD and add a sentence under §5.8 noting that the linkage is only via action_payload_json.\nOption B: add `delegation_id TEXT` (nullable) to the approvals table with an FK to delegations(id) and an index, then keep the ERD line.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-010",
+    "title": "Codex integration §7.5 is materially incomplete for a Full-Tech spec",
+    "category": "Missing Information",
+    "severity": "warning",
+    "location": "Section 7.5 Integration: Codex CLI (lines 1079-1081)",
+    "lineNumber": 1081,
+    "currentText": "Identical lifecycle; specifics finalized after spike S-1 (session resume mechanism).",
+    "issue": "The entire Codex CLI integration section is one sentence. A Full-Tech spec normally provides at least the spawn invocation, event/stream parsing assumptions, and resume contract — even if conditional on spike findings. §5.4 has a similar caveat. For a Phase-4 feature this is acceptable as a known gap, but the spec should make explicit that §5.4 and §7.5 will be amended as a contract before Phase 4 commits.",
+    "impact": "Phase 4 cannot be planned in detail; risk owner has no formal trigger to update the spec. Readers unfamiliar with the spike model may treat this as a complete spec.",
+    "proposedText": "Identical lifecycle; specifics finalized after spike S-1 (session resume mechanism). **Spec amendment is a Phase 4 entry criterion**: §5.4 and §7.5 must be updated with the resolved Codex spawn invocation, event-stream contract, and resume mechanism (or workaround) before Phase 4 deliverables begin.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-011",
+    "title": "Webhook body schema in §7.4 lacks attachments, but §5.2 handles ATTACHMENT_TOO_LARGE",
+    "category": "Missing Information",
+    "severity": "warning",
+    "location": "Section 7.4 POST /amc/webhook request body (lines 935-945) vs Section 5.2 error table (line 245)",
+    "lineNumber": 245,
+    "currentText": "| AMC `ATTACHMENT_TOO_LARGE` | \"That attachment is too big for the channel\" | Drop attachment, send text only |",
+    "issue": "§5.2 lists ATTACHMENT_TOO_LARGE as a handled error implying the inbound envelope can carry attachments, but the §7.4 Pydantic body schema enumerates only id, channel_id, sender_id, text, ts, approval_id (extra='allow'). AMCInboundEnvelope (§7.3 lines 906-914) matches §7.4. There is no defined inbound attachment field.",
+    "impact": "Implementers cannot know whether attachments arrive on the inbound webhook (and if so under what field), or whether ATTACHMENT_TOO_LARGE is purely an outbound `send` error. The error table conflates inbound and outbound errors.",
+    "proposedText": "Either (a) add `attachments: list[Attachment] | None` to the inbound envelope schema in both §7.4 and §7.3 with `Attachment(kind, url, size_bytes)`, or (b) annotate the §5.2 error table to clarify that ATTACHMENT_TOO_LARGE is an outbound `send` error (not inbound).",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-012",
+    "title": "Alembic for dbos.db is mentioned but scope is undefined and possibly redundant",
+    "category": "Ambiguities",
+    "severity": "warning",
+    "location": "Section 7.2 (line 670), Section 9.1 (line 1169), Section 9.3 (line 1229)",
+    "lineNumber": 1229,
+    "currentText": "| DBOS configuration | Configure DBOS to use `~/.capo/dbos.db`; migrations | `capo/workflows/__init__.py`, Alembic config for dbos.db | Settings |",
+    "issue": "DBOS owns its workflow-state schema internally — its tables are created and migrated by DBOS itself. Running Alembic against dbos.db would either fight DBOS bookkeeping or be a no-op. The spec asserts Alembic supports both SQLite files but doesn't say what app-owned tables would live in dbos.db that need Alembic management.",
+    "impact": "Phase 3 deliverable 'Alembic config for dbos.db' is undefined work; it may be unnecessary or actively harmful. Either wasted hours or implementer adds Alembic that conflicts with DBOS.",
+    "proposedText": "Option A (recommended): remove 'Alembic config for dbos.db' from this deliverable and update §7.2 to 'Alembic for state.db only — DBOS manages dbos.db schema'.\nOption B: list the app-owned tables planned in dbos.db (e.g., co-located idempotency keys) in §7.3 and keep the Alembic deliverable with a defined initial migration.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-013",
+    "title": "Cost-cap accuracy promise (±$1) lacks a defined reconciliation procedure",
+    "category": "Ambiguities",
+    "severity": "warning",
+    "location": "Section 6.4 (line 577), Section 5.9 (line 427)",
+    "lineNumber": 577,
+    "currentText": "| Cost cap accuracy | Daily totals within ±$1 of Logfire-reported actual |",
+    "issue": "§6.4 promises 'Daily totals within ±$1 of Logfire-reported actual', but §5.9 says the accountant 'reads Logfire's per-run cost (or a custom per-call accumulator)' — the OR is the problem. If the accumulator is the source of truth, there is no separate Logfire signal to be 'within ±$1 of'. §13 calls out 'drift > 10%' but doesn't say how drift is computed; no reconciliation cadence, query, or alert is specified.",
+    "impact": "Phase 5 checkpoint says 'synthetic cost accumulation crosses soft cap → model swap verified' but the accuracy SLA cannot be measured without a reconciliation step. §13 mitigation ('Reconcile with Logfire daily') is unimplementable as written.",
+    "proposedText": "Add an acceptance criterion to §5.9: 'Canonical cost source is Logfire (or the per-call accumulator when Logfire is unavailable). A nightly reconciliation step emits a `capo.budget.reconcile` span with `accumulator_usd`, `logfire_usd`, `drift_usd`. The ±$1 requirement in §6.4 is measured against this span.'",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-014",
+    "title": "Main-agent model override mechanism is claimed but undefined",
+    "category": "Missing Information",
+    "severity": "warning",
+    "location": "Section 5.1 (line 193), Section 5.9 (line 425)",
+    "lineNumber": 193,
+    "currentText": "- [ ] Default model is read from `config.toml [models] default`; configurable per-run override is supported.",
+    "issue": "§5.1 says 'configurable per-run override is supported' for the default model, and §5.9 says 'unless explicitly overridden by the user.' Neither describes the override surface — no /model slash command in §5.10, no override field on inbound envelopes in §7.4, no agent tool for model selection in §7.1's tool list.",
+    "impact": "The acceptance criterion is unimplementable as stated. Either drop the claim or expose the mechanism.",
+    "proposedText": "Either (a) add a /model <name> slash command in §5.10 with scope (single turn vs session) and allowlist matching config.models, OR (b) tighten the §5.1 and §5.9 language to 'configurable via config.toml edit + restart' and remove the per-run-override claim from V1.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-015",
+    "title": "§5.5 phase column has redundant wording",
+    "category": "Structure Issues",
+    "severity": "warning",
+    "location": "Section 5.5 Tools — Status / Output / Kill / List (line 305)",
+    "lineNumber": 305,
+    "currentText": "**Phase**: 2 (status/output/kill), 2 (list)",
+    "issue": "Both halves of the phase declaration resolve to Phase 2, so the qualifier is redundant and could mislead a planner scanning for a Phase 1 vs Phase 2 split.",
+    "impact": "Minor reading friction; could mislead a planner.",
+    "proposedText": "**Phase**: 2",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-016",
+    "title": "Glossary should include Litestream, WAL, HMAC, Alembic, Pydantic AI, Logfire",
+    "category": "Missing Information",
+    "severity": "suggestion",
+    "location": "Section 15.1 Glossary (lines 1438-1447)",
+    "lineNumber": 1447,
+    "currentText": "| **Approval workflow** | DBOS workflow that does `DBOS.recv(approval_id)` to durably wait for user response before executing a guarded action. |",
+    "issue": "Glossary defines product-specific terms (AMC, DBOS, SOUL, Delegation, Session, Thread, Worktree, Approval workflow) but skips tech-stack terms used heavily throughout the spec: Litestream, WAL, HMAC, Alembic, Pydantic AI, Logfire. For a Full-Tech spec, even well-known terms benefit from one-line entries explaining the role each plays in Capo specifically.",
+    "impact": "Onboarding readers — particularly future small-group members per §4.1 — will hit unfamiliar acronyms without a single-stop reference.",
+    "proposedText": "| **Approval workflow** | DBOS workflow that does `DBOS.recv(approval_id)` to durably wait for user response before executing a guarded action. |\n| **Litestream** | Continuous-WAL replication daemon for SQLite; streams state.db to local + cloud bucket. |\n| **WAL** | SQLite Write-Ahead Log journal mode; enables concurrent readers + single writer. |\n| **HMAC** | Keyed hash signature used to authenticate AMC webhook payloads. |\n| **Alembic** | Schema migration tool for state.db; one initial migration per phase as needed. |\n| **Pydantic AI** | Agent framework Capo uses for tool registration, dependency injection, and OTel-native instrumentation. |\n| **Logfire** | Pydantic's observability platform; receives traces, costs, and alerts per the §6.5 taxonomy. |",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-017",
+    "title": "mark_read is not declared idempotent in §5.2 even though send is",
+    "category": "Missing Information",
+    "severity": "suggestion",
+    "location": "Section 5.2 (line 225), Section 7.5 (lines 1055-1057), Section 9.0 spike S-4 (line 1151)",
+    "lineNumber": 225,
+    "currentText": "- [ ] Worker calls `amc.send` then `amc.mark_read` after the agent run completes; both are routed through `transport/amc_client.py`.",
+    "issue": "§5.2 says the worker calls amc.send then amc.mark_read. §7.5 explicitly declares every outbound send carries a UUIDv4 Idempotency-Key. No corresponding idempotency contract is declared for mark_read, but the restart-resume scenario (§5.6) and the worker-crash edge case (§5.2) can both result in mark_read being attempted twice. Spike S-4 already includes 'mark_read idempotency' in scope but it's not stated as a criterion.",
+    "impact": "Possible mark-read drift after worker crashes; minor since AMC likely tolerates redundant calls, but the contract should be explicit.",
+    "proposedText": "- [ ] Worker calls `amc.send` then `amc.mark_read` after the agent run completes; both are routed through `transport/amc_client.py`. `amc.mark_read` calls are idempotent on `message_id` and safe to retry.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-018",
+    "title": "Span name templating for dynamic tools doesn't specify <name> normalization",
+    "category": "Ambiguities",
+    "severity": "suggestion",
+    "location": "Section 6.5 Logfire Span Taxonomy (line 589)",
+    "lineNumber": 589,
+    "currentText": "| `capo.tool.<name>` | Tool execution | `tool_name`, `result_status` |",
+    "issue": "The span name template is fine for fixed tools, but it must also cover dynamically-registered NL-fallback tools from §5.10 (session_new, session_status, session_clear). The taxonomy doesn't specify whether <name> is the Python function name, the agent-facing tool name, or a slugified label.",
+    "impact": "Logfire dashboards built against this taxonomy will be inconsistent if implementations choose different conventions across tool families.",
+    "proposedText": "| `capo.tool.<name>` | Tool execution | `tool_name`, `result_status`. `<name>` is the agent-facing tool name as registered with Pydantic AI (snake_case), e.g., `capo.tool.delegate_to_claude_code`, `capo.tool.session_new`. |",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-019",
+    "title": "Heartbeat milestone identity is loose; idempotency key may collide if config changes",
+    "category": "Ambiguities",
+    "severity": "suggestion",
+    "location": "Section 5.13 (line 530), Section 15.3 heartbeat (line 1520)",
+    "lineNumber": 530,
+    "currentText": "- [ ] All proactive sends use idempotency keys derived from `(delegation_id, milestone)`.",
+    "issue": "'Milestone' identity is implicit — is it the interval value in seconds, an ordinal, or the elapsed time at send? If the config is updated mid-run, milestones may shift and idempotency keys may collide or drift across restarts.",
+    "impact": "Heartbeats could double-send across restart if the milestone key isn't canonicalized.",
+    "proposedText": "- [ ] All proactive sends use idempotency keys derived from `(delegation_id, str(threshold_seconds))`, where the threshold list is captured from config at delegation start time and frozen on the delegations row so config edits don't affect in-flight idempotency.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-020",
+    "title": "§5.6 idempotency clause has a hard-to-parse parenthetical",
+    "category": "Ambiguities",
+    "severity": "suggestion",
+    "location": "Section 5.6 (line 339)",
+    "lineNumber": 339,
+    "currentText": "- [ ] **All `@DBOS.step` calls with external side effects (subprocess spawn, `amc.send`, DB inserts other than within `BEGIN IMMEDIATE` retry helper) generate and persist an idempotency key in the workflow's step state so retries are safe.**",
+    "issue": "'DB inserts other than within BEGIN IMMEDIATE retry helper' is a double-negative-style exception that takes two reads to parse. Intent appears to be: 'DB inserts (except those already wrapped by the retry helper) need idempotency keys.'",
+    "impact": "Readability only — but this is a critical correctness contract.",
+    "proposedText": "- [ ] **All `@DBOS.step` calls with external side effects — subprocess spawn, `amc.send`, and any DB insert not already wrapped by the `BEGIN IMMEDIATE` retry helper — generate and persist an idempotency key in the workflow's step state so retries are safe.**",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-021",
+    "title": "Session boundaries are unbounded if user never sends /new",
+    "category": "Structure Issues",
+    "severity": "suggestion",
+    "location": "Section 5.7 (line 368)",
+    "lineNumber": 368,
+    "currentText": "- [ ] **Session boundary.** A session ends when the user explicitly starts a new one (slash command `/new` or NL equivalent) — `sessions` table tracks `(thread_id, session_id, started_at, ended_at, compacted_to_message_index)`.",
+    "issue": "A session that never receives /new accumulates indefinitely. Compaction handles tokens, but the unbounded sessions lifetime leaves `compacted_to_message_index` and conversation tail growth without a natural ceiling. Behavior on multi-year sessions is undefined.",
+    "impact": "Edge-case behavior on very long sessions is undefined. Minor for V1 single-user, more relevant for forward-compat multi-user.",
+    "proposedText": "- [ ] **Session boundary.** A session ends only when the user explicitly starts a new one (slash command `/new` or NL equivalent) — `sessions` table tracks `(thread_id, session_id, started_at, ended_at, compacted_to_message_index)`. V1 imposes no implicit timeout; idle-timeout-based rotation is a future iteration.",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-022",
+    "title": "§11.3 alert table mentions an MCP tool name, which is an implementation detail",
+    "category": "Structure Issues",
+    "severity": "suggestion",
+    "location": "Section 11.3 Monitoring & Alerting (line 1365)",
+    "lineNumber": 1365,
+    "currentText": "Logfire alerts (configured via `mcp__plugin_logfire_logfire__alert_create`):",
+    "issue": "The MCP tool identifier is a transport detail of the current operator's tooling, not a spec contract. If the MCP setup changes, the spec becomes false without any functional change.",
+    "impact": "Cosmetic; locks the spec to a specific MCP namespace.",
+    "proposedText": "Logfire alerts (configured against the Logfire alerts API):",
+    "status": "pending"
+  },
+  {
+    "id": "FIND-023",
+    "title": "'Exactly once' completion notification lacks a prescriptive test assertion",
+    "category": "Structure Issues",
+    "severity": "suggestion",
+    "location": "Section 10.2 Critical Path: Restart-Resilient Long Delegation (line 1335)",
+    "lineNumber": 1335,
+    "currentText": "| 6 | CC eventually completes | Workflow runs `summarize_run` + `notify_user`; AMC receives completion message exactly once |",
+    "issue": "Step 6 is descriptive rather than prescriptive. §5.6 promises idempotency keys on side-effecting steps, but the test step doesn't specify how 'exactly once' is asserted (e.g., assert AMC `/messages/send` mock invocation count == 1 with a specific Idempotency-Key).",
+    "impact": "A future implementer could write a test that misses the double-send case.",
+    "proposedText": "| 6 | CC eventually completes | Workflow runs `summarize_run` + `notify_user`; AMC mock records exactly one `POST /messages/send` call for the completion notification (verified via `Idempotency-Key` header and call count) |",
+    "status": "pending"
+  }
+];
+
+// === STATE ===
+const STATE = {
+  findings: [],
+  selectedId: null,
+  statusFilter: 'all',
+  severityFilter: 'all',
+  comments: {}
+};
+
+function init() {
+  STATE.findings = FINDINGS_DATA.map(f => ({
+    ...f,
+    status: f.status || 'pending'
+  }));
+  renderHeader();
+  renderStats();
+  renderFilters();
+  renderSpec();
+  renderFindings();
+  updatePromptPanel();
+}
+
+// === RENDERING ===
+
+function renderHeader() {
+  document.getElementById('spec-name').textContent = SPEC_CONTENT.name || 'Spec Analysis';
+  document.getElementById('depth-level').textContent = SPEC_CONTENT.depthLevel || '';
+  document.getElementById('analyzed-at').textContent = SPEC_CONTENT.analyzedAt || '';
+  document.title = `Review: ${SPEC_CONTENT.name || 'Spec Analysis'}`;
+}
+
+function renderStats() {
+  const counts = { total: STATE.findings.length, critical: 0, warning: 0, suggestion: 0, pending: 0, approved: 0, rejected: 0 };
+  STATE.findings.forEach(f => {
+    counts[f.severity]++;
+    counts[f.status]++;
+  });
+
+  const el = document.getElementById('stats');
+  el.innerHTML = [
+    statHTML('Total', counts.total, ''),
+    statHTML('Critical', counts.critical, 'var(--purple)'),
+    statHTML('Warning', counts.warning, 'var(--amber)'),
+    statHTML('Suggestion', counts.suggestion, 'var(--blue)'),
+    statHTML('Pending', counts.pending, 'var(--amber)'),
+    statHTML('Approved', counts.approved, 'var(--green)'),
+    statHTML('Rejected', counts.rejected, 'var(--red)')
+  ].join('');
+}
+
+function statHTML(label, value, color) {
+  const pct = STATE.findings.length ? (value / STATE.findings.length * 100) : 0;
+  return `<div class="stat">
+    <div class="stat-value" style="color:${color || 'var(--text)'}">${value}</div>
+    <div class="stat-label">${label}</div>
+    <div class="stat-bar"><div class="stat-bar-fill" style="width:${pct}%;background:${color || 'var(--border)'}"></div></div>
+  </div>`;
+}
+
+function renderFilters() {
+  const counts = { all: STATE.findings.length, pending: 0, approved: 0, rejected: 0 };
+  STATE.findings.forEach(f => counts[f.status]++);
+
+  const tabs = [
+    { key: 'all', label: 'All' },
+    { key: 'pending', label: 'Pending' },
+    { key: 'approved', label: 'Approved' },
+    { key: 'rejected', label: 'Rejected' }
+  ];
+
+  document.getElementById('status-filters').innerHTML = tabs.map(t =>
+    `<button class="filter-tab${STATE.statusFilter === t.key ? ' active' : ''}"
+      onclick="setStatusFilter('${t.key}')">${t.label}<span class="count">${counts[t.key]}</span></button>`
+  ).join('');
+}
+
+function renderSpec() {
+  const content = SPEC_CONTENT.content || '';
+  const el = document.getElementById('spec-content');
+  const lines = content.split('\n');
+  const findingsByLine = {};
+  STATE.findings.forEach(f => {
+    if (f.lineNumber) {
+      if (!findingsByLine[f.lineNumber]) findingsByLine[f.lineNumber] = [];
+      findingsByLine[f.lineNumber].push(f);
+    }
+  });
+
+  let html = '';
+  lines.forEach((line, i) => {
+    const lineNum = i + 1;
+    const findings = findingsByLine[lineNum];
+    if (findings) {
+      const f = findings[0];
+      const statusClass = f.status !== 'pending' ? ` status-${f.status}` : '';
+      const selectedClass = f.id === STATE.selectedId ? ' selected' : '';
+      const markers = findings.map(ff =>
+        `<span class="annotation-marker severity-${ff.severity}" onclick="selectFinding('${ff.id}')" title="${escapeAttr(ff.title)}">${ff.id}</span>`
+      ).join('');
+      html += `<div class="annotated-line severity-${f.severity}${statusClass}${selectedClass}" data-finding-id="${f.id}" onclick="selectFinding('${f.id}')">${renderMarkdownLine(line)}${markers}</div>`;
+    } else {
+      html += `<div>${renderMarkdownLine(line)}</div>`;
+    }
+  });
+
+  el.innerHTML = html;
+}
+
+function renderFindings() {
+  const filtered = STATE.findings.filter(f => {
+    if (STATE.statusFilter !== 'all' && f.status !== STATE.statusFilter) return false;
+    if (STATE.severityFilter !== 'all' && f.severity !== STATE.severityFilter) return false;
+    return true;
+  });
+
+  const el = document.getElementById('findings-list');
+
+  if (filtered.length === 0) {
+    el.innerHTML = `<div class="empty-state"><h3>No findings match filters</h3><p>Try changing the status or severity filter.</p></div>`;
+    return;
+  }
+
+  el.innerHTML = filtered.map(f => {
+    const isSelected = f.id === STATE.selectedId;
+    const comment = STATE.comments[f.id] || '';
+    return `
+    <div class="finding-card${isSelected ? ' selected' : ''} status-${f.status}" onclick="selectFinding('${f.id}')">
+      <div class="finding-header">
+        <div>
+          <span class="finding-id">${esc(f.id)}</span>
+          <span class="badge badge-${f.severity}">${esc(f.severity)}</span>
+          <span class="status-badge status-${f.status}">${esc(f.status)}</span>
+        </div>
+      </div>
+      <div class="finding-title">${esc(f.title)}</div>
+      <div class="category-badge">${esc(f.category)}</div>
+      <div class="finding-location">${esc(f.location)}</div>
+      <div class="finding-issue">${esc(f.issue)}</div>
+      ${f.impact ? `<div class="finding-issue" style="font-style:italic">${esc(f.impact)}</div>` : ''}
+      ${isSelected ? `
+        ${f.currentText ? `
+          <div class="finding-detail" onclick="event.stopPropagation()">
+            <div class="finding-detail-label">Current</div>
+            <div class="finding-detail-text current">${esc(f.currentText)}</div>
+          </div>` : ''}
+        ${f.proposedText ? `
+          <div class="finding-detail" onclick="event.stopPropagation()">
+            <div class="finding-detail-label">Proposed</div>
+            <div class="finding-detail-text proposed">${esc(f.proposedText)}</div>
+          </div>` : ''}
+        <textarea class="comment-area" placeholder="Add a comment (optional)..." oninput="setComment('${f.id}', this.value)" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">${esc(comment)}</textarea>
+        <div class="finding-actions">
+          ${f.status === 'pending' ? `
+            <button class="btn btn-approve" onclick="event.stopPropagation(); setStatus('${f.id}', 'approved')">Approve</button>
+            <button class="btn btn-reject" onclick="event.stopPropagation(); setStatus('${f.id}', 'rejected')">Reject</button>
+          ` : `
+            <button class="btn" onclick="event.stopPropagation(); setStatus('${f.id}', 'pending')">Reset to Pending</button>
+          `}
+        </div>
+      ` : ''}
+    </div>`;
+  }).join('');
+}
+
+// === MINIMAL MARKDOWN RENDERER ===
+
+function renderMarkdownLine(line) {
+  if (/^#### (.+)/.test(line)) return `<h4>${esc(RegExp.$1)}</h4>`;
+  if (/^### (.+)/.test(line)) return `<h3>${esc(RegExp.$1)}</h3>`;
+  if (/^## (.+)/.test(line)) return `<h2>${esc(RegExp.$1)}</h2>`;
+  if (/^# (.+)/.test(line)) return `<h1>${esc(RegExp.$1)}</h1>`;
+  if (/^[-*] (.+)/.test(line)) return `<li>${inlineMarkdown(RegExp.$1)}</li>`;
+  if (/^\d+\. (.+)/.test(line)) return `<li>${inlineMarkdown(RegExp.$1)}</li>`;
+  if (line.trim() === '') return '<br>';
+  return inlineMarkdown(line);
+}
+
+function inlineMarkdown(text) {
+  let s = esc(text);
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/`(.+?)`/g, '<code>$1</code>');
+  return s;
+}
+
+// === STATE MUTATIONS ===
+
+function selectFinding(id) {
+  STATE.selectedId = STATE.selectedId === id ? null : id;
+  updateAll();
+}
+
+function setStatusFilter(filter) {
+  STATE.statusFilter = filter;
+  STATE.selectedId = null;
+  updateAll();
+}
+
+function setStatus(id, status) {
+  const f = STATE.findings.find(x => x.id === id);
+  if (f) f.status = status;
+  updateAll();
+  showToast(`${id} ${status}`);
+}
+
+function setComment(id, text) {
+  STATE.comments[id] = text;
+}
+
+function updateAll() {
+  renderStats();
+  renderFilters();
+  renderSpec();
+  renderFindings();
+  updatePromptPanel();
+}
+
+// === PROMPT GENERATION ===
+
+function updatePromptPanel() {
+  const approved = STATE.findings.filter(f => f.status === 'approved');
+  const panel = document.getElementById('prompt-panel');
+  const countEl = document.getElementById('approved-count');
+
+  countEl.textContent = approved.length;
+
+  if (approved.length === 0) {
+    panel.classList.add('hidden');
+    return;
+  }
+
+  panel.classList.remove('hidden');
+
+  const prompt = generatePrompt(approved);
+  document.getElementById('prompt-content').textContent = prompt;
+}
+
+function generatePrompt(approved) {
+  const lines = [`Apply these changes to the spec at: ${SPEC_CONTENT.path}\n`];
+
+  approved.forEach((f, i) => {
+    lines.push(`${i + 1}. ${f.title}`);
+    lines.push(`   Location: ${f.location}`);
+    if (f.currentText && f.proposedText) {
+      lines.push(`   Change: "${f.currentText}" → "${f.proposedText}"`);
+    } else if (f.proposedText) {
+      lines.push(`   Add: "${f.proposedText}"`);
+    } else {
+      lines.push(`   Issue: ${f.issue}`);
+    }
+    const comment = STATE.comments[f.id];
+    if (comment) {
+      lines.push(`   Note: ${comment}`);
+    }
+    lines.push('');
+  });
+
+  return lines.join('\n');
+}
+
+function copyPrompt() {
+  const approved = STATE.findings.filter(f => f.status === 'approved');
+  const prompt = generatePrompt(approved);
+  navigator.clipboard.writeText(prompt).then(() => {
+    showToast('Prompt copied to clipboard');
+  }).catch(() => {
+    const el = document.getElementById('prompt-content');
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    showToast('Select All applied — press Cmd/Ctrl+C');
+  });
+}
+
+function downloadSpec() {
+  const content = SPEC_CONTENT.content || '';
+  let modified = content;
+
+  const approved = STATE.findings.filter(f => f.status === 'approved' && f.currentText && f.proposedText);
+  approved.forEach(f => {
+    modified = modified.replace(f.currentText, f.proposedText);
+  });
+
+  const blob = new Blob([modified], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const baseName = (SPEC_CONTENT.path || 'spec').split('/').pop().replace(/\.md$/, '');
+  a.download = `${baseName}.modified.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Modified spec downloaded');
+}
+
+// === HELPERS ===
+
+function esc(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.textContent = String(str);
+  return d.innerHTML;
+}
+
+function escapeAttr(str) {
+  return esc(str).replace(/"/g, '&quot;');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// === SEVERITY FILTER ===
+document.getElementById('severity-filter').addEventListener('change', function() {
+  STATE.severityFilter = this.value;
+  STATE.selectedId = null;
+  updateAll();
+});
+
+// === INIT ===
+init();
+</script>
+</body>
+</html>
