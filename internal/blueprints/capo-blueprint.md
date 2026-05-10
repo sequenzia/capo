@@ -270,7 +270,7 @@ A few details worth flagging:
 
 ### Tool: delegate to Codex
 
-Same shape, different binary. Codex CLI's App Server protocol gives you JSON-RPC for fine-grained streaming, but for v1 you can just shell out.
+Same shape, different binary. Codex CLI's App Server protocol gives you JSON-RPC for fine-grained streaming, but shelling out is sufficient.
 
 ```python
 # capo/tools/codex.py (sketch)
@@ -373,7 +373,7 @@ active = "default"
 dir    = "souls"
 ```
 
-Switching personas is a config change plus restart in v0. A runtime swap tool can come later if it proves useful; it isn't needed to validate the design.
+Switching personas is a config change plus restart. A runtime swap tool can come later if it proves useful; it isn't needed to validate the design.
 
 **Sections.** Borrowing OpenClaw's structure verbatim, since it has held up well:
 
@@ -413,7 +413,7 @@ Keep each soul under ~50 lines. Skip life stories, mission statements, and "main
 
 **`shell_exec` is not a free tool.** As named in `tools/basic.py` it would let the model run any command. For a process with internet access on a personal machine, that's a footgun. Constrain it: an allowlist of binaries (`git`, `ls`, `rg`, `cat`, `pwd`, `which`, `head`, `tail`, ...), reject shell metacharacters (`;`, `&&`, `||`, `|`, backticks, `$(...)`), reject `sudo`, and reject paths outside `projects_root` and `workspaces_root`. Anything outside the allowlist routes through the approval flow below — it never just runs.
 
-**Approval flows.** Some calls — non-allowlisted shells, delegations against repos outside `projects_root`, `kill_delegation`, anything destructive — should pause and ask. The wait must survive restarts, so it lives inside a DBOS workflow: Capo sends a question to AMC tagged with an `approval_id`, the workflow does `DBOS.recv(approval_id, timeout=...)`, and the next inbound webhook with a matching `approval_id` resumes the workflow with the user's answer. Pydantic AI supports tool approval natively (v2 roadmap item); spec the envelope shape now — `{ approval_id, prompt, options }` outbound, `{ approval_id, choice }` inbound — so `tools/basic.py` and `tools/claude_code.py` can be written against the same primitive.
+**Approval flows.** Some calls — non-allowlisted shells, delegations against repos outside `projects_root`, `kill_delegation`, anything destructive — should pause and ask. The wait must survive restarts, so it lives inside a DBOS workflow: Capo sends a question to AMC tagged with an `approval_id`, the workflow does `DBOS.recv(approval_id, timeout=...)`, and the next inbound webhook with a matching `approval_id` resumes the workflow with the user's answer. Pydantic AI supports tool approval natively; spec the envelope shape now — `{ approval_id, prompt, options }` outbound, `{ approval_id, choice }` inbound — so `tools/basic.py` and `tools/claude_code.py` can be written against the same primitive.
 
 ### Memory and state
 
@@ -467,7 +467,7 @@ Run [Litestream](https://litestream.io) replicating the SQLite file to a local f
 
 **Output retention.** `delegation_output` grows unbounded and will dominate DB size — a single chatty run can add hundreds of megabytes. Run a nightly job that prunes raw chunks older than seven days, keeping only the LLM-generated summary stored on the `delegations` row, then `PRAGMA wal_checkpoint(TRUNCATE)` to reclaim WAL space. Keep the policy in code, not in your head.
 
-**When to migrate to Postgres.** SQLite is correct for v0/v1. Remote access from your phone or another laptop is an app-layer concern — AMC plus the FastAPI listener handle it — not a database concern. Migrate when **any one** of these triggers fires:
+**When to migrate to Postgres.** SQLite is the right starting point. Remote access from your phone or another laptop is an app-layer concern — AMC plus the FastAPI listener handle it — not a database concern. Migrate when **any one** of these triggers fires:
 
 1. A second long-lived process needs to share DBOS workflow state. DBOS supports both backends, but multi-instance coordination requires Postgres.
 2. You commit to vector memory in the same store. `pgvector` with HNSW is cleaner than running `sqlite-vec` as a separate moving part.
@@ -604,7 +604,7 @@ notify_channel = "amc:default"
 
 A small accounting helper reads Logfire's per-run cost (or your own per-call accumulator) at boot and on a pre-tool-call hook. At soft cap, Capo swaps `default` → `router` for the rest of the day and sends a one-line heads-up via AMC. At hard cap, `capo.run` short-circuits with a "budget exceeded — reply 'override' to continue today" message. Resets at local midnight.
 
-Track delegation cost separately. A 90-minute Claude Code run is its own line item and shouldn't be lumped against Capo's daily cap — spawning one is a deliberate user choice, and budgeting it properly needs per-agent caps later. For v0/v1, just log delegation cost and surface it in the completion notification.
+Track delegation cost separately. A 90-minute Claude Code run is its own line item and shouldn't be lumped against Capo's daily cap — spawning one is a deliberate user choice, and budgeting it properly needs per-agent caps later. Log delegation cost and surface it in the completion notification.
 
 ## Observability
 
