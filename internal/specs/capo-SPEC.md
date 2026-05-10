@@ -231,7 +231,7 @@ flowchart LR
 |----------|-------|-------------------|
 | Signature mismatch | Bad `X-AMC-Signature` | `401`, no body parsed, log signature-fail metric |
 | Duplicate delivery | Same `X-AMC-Delivery-Id` within window | `204`, no enqueue, log dedupe-hit |
-| AMC offline at boot | `GET /messages/unread` fails | Retry with backoff; serve webhook only after one successful sweep or after `max_boot_wait` (default 60s) — log a warning if proceeding without sweep |
+| AMC offline at boot | `GET /messages/unread` fails | Retry with backoff; serve webhook only after one successful sweep or after `max_boot_wait_seconds` (default 60s) — log a warning if proceeding without sweep |
 | Long-running turn | Agent takes > 60s | Webhook already ACKed at 204; worker handles in background |
 | Worker crash mid-turn | Exception during `agent.run` | Log + send error reply to channel + mark message read; do not crash the dispatcher |
 
@@ -261,9 +261,10 @@ flowchart LR
 - [ ] Tool accepts a `ClaudeCodeBrief` Pydantic model with: `goal`, `repo_path`, `constraints`, `success_criteria`, `relevant_files`, `create_worktree` (default `True`), `model` (optional — overrides config default for CC).
 - [ ] Creates `~/.capo/workspaces/<delegation_id>/` directory before spawning.
 - [ ] When `create_worktree=True`, creates a fresh worktree (`git worktree add <workspace> -b <delegation_id>`) off `worktree_base_branch` (default `main`).
-- [ ] Spawns Claude Code as `claude -p <rendered_brief> --output-format json --permission-mode <config> [--model <X>]`; captures session ID from the first JSON event.
-- [ ] **Persistence before yielding.** Insert `delegations` row with status `running` and `session_id` (captured async; row UPDATEd as soon as event arrives) BEFORE the tool returns.
-- [ ] Hands off to the `monitor_delegation` DBOS workflow with `delegation_id` + `pid`.
+- [ ] Spawns Claude Code as `claude -p <rendered_brief> --output-format json --permission-mode <config> [--model <X>]`; captures `session_id_subagent` from the first JSON event.
+- [ ] **Persistence before yielding.** Insert `delegations` row with status `running`, `parent_thread_id`, `pid`, and nullable `session_id_subagent` before returning a user-visible handle.
+- [ ] Start stdout/stderr/event capture immediately after spawn; when the first JSON event yields `session_id_subagent`, UPDATE the row in the same retry-helper write path.
+- [ ] Hand off to the `monitor_delegation` DBOS workflow only after `session_id_subagent` is durable. If session ID capture times out, mark the row `failed`, kill the subprocess if still running, and return an explicit tool error.
 - [ ] Returns a `DelegationHandle` with `delegation_id`, `agent="claude-code"`, `workspace`, `status="running"`, short `notes`.
 - [ ] Rejects `repo_path` outside `projects_root` unless approval workflow returned approved (see §5.8).
 
@@ -275,6 +276,7 @@ flowchart LR
 | `worktree_base_branch` doesn't exist | Repo with no `main` | Tool errors; user can override via config |
 | Disk full mid-spawn | OS error | Row marked `failed` with reason; subprocess (if started) killed |
 | Spawn timeout (CC binary missing) | `claude` not on PATH | Boot-time pre-check should catch; tool returns explicit error |
+| Crash before session ID capture | Capo exits after spawn but before first JSON event | Boot recovery marks any `running` delegation with null `session_id_subagent` and no DBOS workflow as `failed` with reason "session id not captured"; notify only if `parent_thread_id` was already persisted |
 
 ---
 
@@ -295,6 +297,7 @@ flowchart LR
 - [ ] `check_delegation_status`, `get_delegation_output`, `kill_delegation` work for Codex delegations identically.
 - [ ] DBOS monitor uses the same `monitor_delegation` workflow, dispatching to a per-agent reader strategy (CC reads `--output-format json` events; Codex reads its equivalent — finalized after spike).
 - [ ] Codex resume mechanism mirrors CC's `--resume <session_id>` contract. If the Codex CLI does not support session resume natively (see spike S-1), the spec is amended to a workaround before Phase 4 commits.
+- [ ] **Phase 4 entry blocker.** Do not create or execute Codex implementation tasks until S-1 has amended §5.4 and §7.5 with the exact spawn invocation, event/output contract, resume mechanism, and fallback behavior if native resume is unavailable.
 
 ---
 
@@ -362,10 +365,10 @@ flowchart LR
 
 #### Acceptance Criteria
 
-- [ ] History stored using Pydantic AI's `ModelMessage` serialization directly. Schema: `(thread_id TEXT, user_id TEXT, ts TIMESTAMP, message_index INT, model_message_json TEXT)`.
-- [ ] `thread_id` = `amc:<channel_id>`. Composite primary key `(thread_id, message_index)`.
-- [ ] On each turn, load all messages for `thread_id` in the **current session** (see Session Control below), feed into `agent.run(... message_history=...)`.
-- [ ] **Session boundary.** A session ends only when the user explicitly starts a new one (slash command `/new` or NL equivalent) — `sessions` table tracks `(thread_id, session_id, started_at, ended_at, compacted_to_message_index)`. V1 imposes no implicit timeout; idle-timeout-based rotation is a future iteration.
+- [ ] History stored using Pydantic AI's `ModelMessage` serialization directly. Schema: `(user_id TEXT, thread_id TEXT, session_id TEXT, ts TIMESTAMP, message_index INT, model_message_json TEXT)`.
+- [ ] `thread_id` = `amc:<channel_id>`. Conversation history uniqueness is scoped by user: composite primary key `(user_id, thread_id, message_index)`.
+- [ ] On each turn, load all messages for `(user_id, thread_id)` in the **current session** (see Session Control below), feed into `agent.run(... message_history=...)`.
+- [ ] **Session boundary.** A session ends only when the user explicitly starts a new one (slash command `/new` or NL equivalent) — `sessions` table tracks `(user_id, thread_id, session_id, started_at, ended_at, compacted_to_message_index)`, with at most one active session per `(user_id, thread_id)`. V1 imposes no implicit timeout; idle-timeout-based rotation is a future iteration.
 - [ ] **Compaction.** When the current session's history tokens exceed `compaction.threshold_tokens` (default 100,000): identify the oldest 50% of messages; call a cheap model (`config.models.router`) to summarize them into a single system message; **retain all messages that reference an active delegation handle (`cc-<id>` or `codex-<id>`) verbatim**, regardless of age; persist the compacted history; log a Logfire span `capo.memory.compact`.
 - [ ] **Active delegation handle** = any delegation in `running` or `pending_approval` state at compaction time.
 - [ ] User can read recent history via `/status` (current session message count and approximate token count).
@@ -529,6 +532,7 @@ If ambiguous, ask a clarifying question.
 - [ ] **On-demand.** User asking "what's going on with X" routes to `check_delegation_status`; agent reply summarizes.
 - [ ] **Final notification.** Always sent on completion regardless of duration.
 - [ ] All proactive sends use idempotency keys derived from `(delegation_id, str(threshold_seconds))`, where the threshold list is captured from config at delegation start time and frozen on the `delegations` row so config edits don't affect in-flight idempotency.
+- [ ] `delegations.heartbeat_intervals_json` stores the frozen threshold list; `delegation_heartbeats` records each sent threshold with `sent_at` and `idempotency_key`, keyed by `(delegation_id, threshold_seconds)`.
 
 ## 6. Non-Functional Requirements
 
@@ -646,8 +650,9 @@ flowchart TD
 
     logfire["Logfire (cloud)<br/>traces, costs, alerts"]:::warning
     capo --> logfire
-    litestream["Litestream<br/>(replicate state.db)"]:::warning
+    litestream["Litestream<br/>(replicate state.db + dbos.db)"]:::warning
     state --> litestream
+    dbosdb --> litestream
 
     classDef primary fill:#dbeafe,stroke:#2563eb,color:#000
     classDef secondary fill:#f3e8ff,stroke:#7c3aed,color:#000
@@ -672,7 +677,7 @@ flowchart TD
 | HTTP server | FastAPI | Minimal webhook listener; type-driven validation |
 | Settings | Pydantic Settings | Validates `config.toml` + `.env` at boot; fail-fast on misconfig |
 | Observability | Pydantic Logfire | One-line setup; cost telemetry; OTel-native if backend swap needed |
-| Replication | Litestream | Continuous WAL streaming of `state.db` to local + cloud |
+| Replication | Litestream | Continuous WAL streaming of `state.db` and `dbos.db` to local + cloud |
 | Process supervision | `launchd` | macOS-native, `KeepAlive` + `RunAtLoad`, plist-defined |
 | Subagent CLIs | Claude Code (`claude`), Codex (`codex`) | Spawned as subprocesses in worktrees / sandboxes |
 | Messaging transport | AMC (HTTP webhook + REST) | Owns iMessage/Discord platform code; HMAC-signed envelopes |
@@ -690,6 +695,7 @@ erDiagram
     USERS ||--o{ DAILY_COSTS : accrues
     SESSIONS ||--o{ CONVERSATION_HISTORY : "scopes"
     DELEGATIONS ||--o{ DELEGATION_OUTPUT : streams
+    DELEGATIONS ||--o{ DELEGATION_HEARTBEATS : tracks
 
     USERS {
         TEXT user_id PK
@@ -697,9 +703,9 @@ erDiagram
         TIMESTAMP created_at
     }
     CONVERSATION_HISTORY {
+        TEXT user_id PK,FK
         TEXT thread_id PK
         INTEGER message_index PK
-        TEXT user_id FK
         TEXT session_id FK
         TIMESTAMP ts
         TEXT model_message_json
@@ -727,6 +733,7 @@ erDiagram
         TEXT summary
         REAL cost_usd
         TEXT model
+        TEXT heartbeat_intervals_json
     }
     DELEGATION_OUTPUT {
         INTEGER id PK
@@ -734,6 +741,12 @@ erDiagram
         TIMESTAMP ts
         TEXT stream
         TEXT chunk
+    }
+    DELEGATION_HEARTBEATS {
+        TEXT delegation_id PK,FK
+        INTEGER threshold_seconds PK
+        TIMESTAMP sent_at
+        TEXT idempotency_key
     }
     APPROVALS {
         TEXT approval_id PK
@@ -780,18 +793,18 @@ CREATE TABLE sessions (
     ended_at                   TIMESTAMP,
     compacted_to_message_index INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX idx_sessions_thread_active ON sessions(thread_id) WHERE ended_at IS NULL;
+CREATE UNIQUE INDEX idx_sessions_user_thread_active ON sessions(user_id, thread_id) WHERE ended_at IS NULL;
 
 CREATE TABLE conversation_history (
+    user_id            TEXT NOT NULL REFERENCES users(user_id),
     thread_id          TEXT NOT NULL,
     message_index      INTEGER NOT NULL,
-    user_id            TEXT NOT NULL REFERENCES users(user_id),
     session_id         TEXT NOT NULL REFERENCES sessions(session_id),
     ts                 TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     model_message_json TEXT NOT NULL,
-    PRIMARY KEY (thread_id, message_index)
+    PRIMARY KEY (user_id, thread_id, message_index)
 );
-CREATE INDEX idx_history_session ON conversation_history(session_id, message_index);
+CREATE INDEX idx_history_session ON conversation_history(user_id, session_id, message_index);
 
 CREATE TABLE delegations (
     id                    TEXT PRIMARY KEY,
@@ -807,7 +820,8 @@ CREATE TABLE delegations (
     parent_thread_id      TEXT,
     summary               TEXT,
     cost_usd              REAL NOT NULL DEFAULT 0,
-    model                 TEXT
+    model                 TEXT,
+    heartbeat_intervals_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX idx_delegations_user_status ON delegations(user_id, status);
 CREATE INDEX idx_delegations_started ON delegations(started_at DESC);
@@ -820,6 +834,14 @@ CREATE TABLE delegation_output (
     chunk         TEXT NOT NULL
 );
 CREATE INDEX idx_output_delegation_ts ON delegation_output(delegation_id, ts);
+
+CREATE TABLE delegation_heartbeats (
+    delegation_id     TEXT NOT NULL REFERENCES delegations(id),
+    threshold_seconds INTEGER NOT NULL,
+    sent_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    idempotency_key   TEXT NOT NULL,
+    PRIMARY KEY (delegation_id, threshold_seconds)
+);
 
 CREATE TABLE approvals (
     approval_id         TEXT PRIMARY KEY,
@@ -1013,7 +1035,7 @@ Capo exposes **two HTTP endpoints**. Everything else is internal.
 | Claude Code CLI | External (subprocess) | stdin/stdout JSON | Coding agent delegation | Inherits user's CC auth |
 | Codex CLI | External (subprocess) | stdin/stdout / RPC | Coding agent delegation | Inherits user's Codex auth |
 | Logfire | External | HTTPS | Trace/cost telemetry | API Key |
-| Litestream | External (sibling process) | filesystem watch + S3 / local | Continuous replication of `state.db` | Bucket creds |
+| Litestream | External (sibling process) | filesystem watch + S3 / local | Continuous replication of `state.db` and `dbos.db` | Bucket creds |
 
 #### Integration: AMC
 
@@ -1064,11 +1086,25 @@ sequenceDiagram
 **Error handling**:
 - Retry policy: `amc_client` retries `RATE_LIMITED` honoring `Retry-After`. Non-retryable codes (`PLATFORM_AUTH`, `CHANNEL_NOT_FOUND`) raise typed exceptions.
 - Idempotency: every outbound `send` includes a freshly-generated UUIDv4 `Idempotency-Key`.
-- Boot sweep failure: retry with backoff up to `max_boot_wait` (default 60s); after that, proceed and log a warning.
+- Boot sweep failure: retry with backoff up to `max_boot_wait_seconds` (default 60s); after that, proceed and log a warning.
+
+**AMC REST Contract**:
+
+All outbound Capo → AMC requests include `Authorization: Bearer $AMC_BEARER_TOKEN`, `X-Agent-ID: capo`, and `Content-Type: application/json`. Error responses use the shared shape `{ "error": { "code": string, "message": string, "retry_after_seconds": nullable int } }`.
+
+| Endpoint | Request | Success Response | Idempotency | Retry Policy |
+|----------|---------|------------------|-------------|--------------|
+| `GET /messages/unread` | No body | `{ "messages": AMCInboundEnvelope[] }` where each envelope matches §7.4 plus any AMC passthrough fields | AMC may return the same message in later sweeps until `mark_read` succeeds | Retry transient 5xx and `RATE_LIMITED`; boot may proceed after `max_boot_wait_seconds` with warning |
+| `POST /messages/send` | `{ "channel_id": str, "text": str, "reply_to_message_id": nullable str, "approval": nullable approval object }` | `{ "message_id": str, "channel_id": str, "status": "sent" }` | Required `Idempotency-Key`; same key must not send duplicate user-visible messages | Retry `RATE_LIMITED` honoring `Retry-After`; do not retry `PLATFORM_AUTH`, `CHANNEL_NOT_FOUND`, or `ATTACHMENT_TOO_LARGE` |
+| `POST /messages/mark_read` | `{ "message_ids": list[str] }` | `{ "marked_read": list[str], "already_read": list[str] }` | Idempotent by `message_id`; repeated marks are successful no-ops | Retry transient 5xx and `RATE_LIMITED`; safe to retry after worker crash |
+
+The nullable approval object for `/messages/send` has shape `{ "approval_id": str, "prompt": str, "options": list[str] }`.
+
+Known AMC error codes: `RATE_LIMITED`, `PLATFORM_AUTH`, `CHANNEL_NOT_FOUND`, `ATTACHMENT_TOO_LARGE`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
 
 #### Integration: Claude Code CLI
 
-**Spawn invocation**:
+**Spawn invocation** (provisional until spike S-3 replaces `<some_capture_mechanism>` with the confirmed session-id capture contract):
 ```bash
 claude -p "<rendered_brief>" \
        --output-format json \
@@ -1088,7 +1124,7 @@ claude --resume <session_id> \
 
 #### Integration: Codex CLI
 
-Identical lifecycle; specifics finalized after spike S-1 (session resume mechanism). **Spec amendment is a Phase 4 entry criterion**: §5.4 and §7.5 must be updated with the resolved Codex spawn invocation, event-stream contract, and resume mechanism (or workaround) before Phase 4 deliverables begin.
+Identical lifecycle; specifics finalized after spike S-1 (session resume mechanism). **Spec amendment is a Phase 4 entry criterion**: §5.4 and §7.5 must be updated with the resolved Codex spawn invocation, event-stream contract, and resume mechanism (or workaround) before Phase 4 deliverables begin. Do not create or execute Codex implementation tasks until that amendment lands.
 
 ### 7.6 Technical Constraints
 
@@ -1120,7 +1156,7 @@ Identical lifecycle; specifics finalized after spike S-1 (session resume mechani
 - Cost caps (soft + hard daily) with model downgrade on soft.
 - Pydantic Settings validation at boot.
 - Logfire instrumentation per the span taxonomy.
-- Litestream replication of `state.db`.
+- Litestream replication of `state.db` and `dbos.db`.
 - Health-check endpoint.
 - `launchd` plist with App Nap disabled and `caffeinate` while delegations active.
 - Multi-user-ready schema with config-mapped AMC sender → `user_id`.
@@ -1276,6 +1312,7 @@ Each spike produces a short markdown findings document committed under `internal
 
 **Checkpoint Gate**:
 - [ ] Spike S-1 (Codex resume) complete; resume contract documented.
+- [ ] §5.4 and §7.5 amended with exact Codex spawn invocation, output/event contract, and resume/fallback behavior before implementation tasks begin.
 - [ ] Phase 4 tests pass.
 - [ ] Integration test: Codex delegation survives restart with resume contract.
 - [ ] Integration test: `kill_delegation` triggers AMC approval, user replies `/deny`, action aborts, user notified.
@@ -1306,7 +1343,7 @@ Each spike produces a short markdown findings document committed under `internal
 | Hybrid compaction | Token-counting + cheap-model summarization preserving active delegation handles | `capo/memory/compaction.py` | Conversation memory |
 | Output retention pruning | Nightly job: delete `delegation_output` chunks > retention window; `wal_checkpoint(TRUNCATE)` | `capo/memory/retention.py` | — |
 | Health check endpoint | `GET /healthz` with subsystem probes | `capo/transport/health.py` | All subsystems |
-| Litestream config | `litestream.yml` replicating `state.db` to local + cloud bucket | `scripts/litestream.yml` | — |
+| Litestream config | `litestream.yml` replicating `state.db` and `dbos.db` to local + cloud bucket with paired restore instructions | `scripts/litestream.yml` | — |
 | `launchd` plist | `com.you.capo.plist` with `KeepAlive`, `RunAtLoad`, App-Nap-disabled, PATH (incl. Homebrew) | `scripts/com.you.capo.plist` | — |
 | `caffeinate` helper | Runs `caffeinate -i` while any delegation in `running` state | `capo/ops/caffeinate.py` | — |
 | Operator runbook | Markdown runbook for common ops + incident response | `docs/runbook.md` | — |
@@ -1320,7 +1357,7 @@ Each spike produces a short markdown findings document committed under `internal
 - [ ] Retention pruning empties old chunks and reclaims WAL space on schedule.
 - [ ] `GET /healthz` returns 200 with all subsystems "ok" on a healthy boot.
 - [ ] `launchd` plist boots Capo cleanly on Mac mini reboot.
-- [ ] Litestream restore exercise: restore `state.db` from a replica; integration tests still pass.
+- [ ] Litestream restore exercise: restore paired `state.db` + `dbos.db` from the same backup point; integration tests still pass.
 - [ ] Spec checklist for §5.9, §5.10, §5.12, §5.13 (final notification), §6.5 signed off.
 
 ## 10. Testing Strategy
@@ -1349,7 +1386,8 @@ Each spike produces a short markdown findings document committed under `internal
 
 - **Webhook handler latency**: 1000 synthetic signed webhooks at 5 rps; assert P99 < 1s ACK.
 - **Output ingest throughput**: synthetic subprocess emitting 100 MB stdout in 60s; assert zero pipe blocks; assert all chunks land in DB.
-- **Concurrent delegations**: 5 simultaneous synthetic CC delegations; assert no `SQLITE_BUSY` errors surface to user; assert all complete.
+- **Concurrent delegations**: configured default (`concurrency.max_delegations = 3`) simultaneous synthetic CC delegations; assert no `SQLITE_BUSY` errors surface to user; assert all complete.
+- **Concurrent delegation stress**: 5 simultaneous synthetic CC delegations as above-default stress coverage; assert the system either queues beyond the configured cap or completes without user-visible lock errors.
 - **Compaction latency**: history at 110K tokens; assert compaction step < 5s with cheap model.
 
 ## 11. Deployment & Operations
@@ -1358,7 +1396,7 @@ Each spike produces a short markdown findings document committed under `internal
 
 - **Topology**: Single Mac mini. Capo + AMC are two sibling `launchd` jobs. No staging environment; the user dogfoods on the production machine.
 - **Rollout**: Manual `launchctl unload && launchctl load` after pulling latest. No canary; sole user is the operator.
-- **Rollback**: Git revert + restart. State migrations are forward-only; rollback may require manual DB restore from Litestream.
+- **Rollback**: Git revert + restart. State migrations are forward-only; rollback may require paired manual DB restore of `state.db` and `dbos.db` from Litestream.
 
 ### 11.2 Feature Flags
 
@@ -1390,7 +1428,7 @@ The runbook (deliverable in Phase 5) covers at minimum:
 - "Capo isn't responding" — check launchd status, check Logfire for last span, check AMC reachability.
 - "A delegation is hung" — `/status`, then `get_delegation_output` tail, then `/kill` if needed.
 - "Cost cap fired unexpectedly" — query `daily_costs`, check Logfire run costs, override via `override` reply.
-- "Restore state.db from Litestream" — exact commands + WAL handling.
+- "Restore state.db and dbos.db from Litestream" — exact paired-restore commands + WAL handling.
 - "Replace a SOUL file" — edit + restart.
 
 ## 12. Dependencies
@@ -1406,6 +1444,18 @@ The runbook (deliverable in Phase 5) covers at minimum:
 | Codex CLI installed + authenticated | User | Required by Phase 4 | Phase 4 |
 | Logfire account | User | Existing (plugin enabled) | Phase 5 (observability), advisory earlier |
 | Litestream binary | User | New install | Phase 5 |
+
+#### Version Policy
+
+| Dependency | Version Requirement | Validation |
+|------------|---------------------|------------|
+| Pydantic AI | Pinned in `pyproject.toml`/lockfile once Phase 1 starts; upgrades require conversation-history round-trip tests | Unit + integration tests for `ModelMessage` serialization |
+| DBOS Python SDK | Pinned before Phase 3; S-2 records the validated SQLite backend version | Phase 3 DBOS concurrency/restart tests |
+| Claude Code CLI | Minimum version established by S-3 and enforced at boot with `claude --version` | Boot-time pre-check fails fast if below supported version |
+| Codex CLI | Minimum version established by S-1 and enforced at boot with `codex --version` when `agents.codex.enabled=true` | Boot-time pre-check fails fast if below supported version |
+| Litestream | Minimum version recorded when Phase 5 restore exercise passes | Restore exercise must cover both `state.db` and `dbos.db` |
+
+Dependency upgrades that affect persisted data, event streams, CLI resume, or workflow state require updating the relevant spike findings document under `internal/specs/spikes/` and rerunning the owning phase's integration tests.
 
 ### 12.2 Cross-Team Dependencies
 
@@ -1426,7 +1476,7 @@ None. Single-operator project. AMC is owned by the same operator but lives in it
 | Compaction loses critical context | Med (degraded responses on long sessions) | Med | Hybrid retains delegation handles verbatim; user can `/new` to escape | Operator |
 | Pydantic AI `ModelMessage` schema changes in upgrade | Med (history unreadable post-upgrade) | Low | Versioned message envelope; integration test on each Pydantic AI upgrade | Operator |
 | `launchd` PATH does not include Homebrew on Apple Silicon | Med (Capo can't find `claude`/`codex`) | High | Plist sets explicit PATH; boot-time pre-check for subagent binaries | Operator |
-| Litestream restore inconsistency with DBOS state | Med (workflow state divergent from app state) | Low | DBOS uses separate file; only restore both together; document recovery procedure | Operator |
+| Litestream restore inconsistency with DBOS state | Med (workflow state divergent from app state) | Low | Replicate both `state.db` and `dbos.db`; restore both from the same backup point; document recovery procedure | Operator |
 | Single-process bottleneck | Low | Low | Acceptable for V1 single-user; horizontal scale is future Postgres + multi-instance | — |
 
 ## 14. Open Questions
@@ -1455,7 +1505,7 @@ None. Single-operator project. AMC is owned by the same operator but lives in it
 | **Thread** | A conversation channel keyed `amc:<channel_id>`. |
 | **Worktree** | A git worktree at `~/.capo/workspaces/<delegation_id>` providing isolated working directory for a subagent. |
 | **Approval workflow** | DBOS workflow that does `DBOS.recv(approval_id)` to durably wait for user response before executing a guarded action. |
-| **Litestream** | Continuous-WAL replication daemon for SQLite; streams `state.db` to local + cloud bucket. |
+| **Litestream** | Continuous-WAL replication daemon for SQLite; streams `state.db` and `dbos.db` to local + cloud bucket. |
 | **WAL** | SQLite Write-Ahead Log journal mode; enables concurrent readers + single writer. |
 | **HMAC** | Keyed hash signature used to authenticate AMC webhook payloads. |
 | **Alembic** | Schema migration tool for `state.db`; one initial migration per phase as needed. |
