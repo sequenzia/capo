@@ -668,20 +668,6 @@ A few Mac mini specifics worth getting right:
 - **Caffeinate when delegations are active.** A small helper that runs `caffeinate -i` while any delegation is in `running` state prevents the machine from sleeping mid-task.
 - **Filesystem.** Worktrees on the SSD, not on iCloud Drive. Git worktrees in iCloud are a recipe for corrupted repos.
 
-## Iteration roadmap
-
-A realistic build order:
-
-1. **v0 (one weekend).** Pydantic AI agent with `web_search`, `shell_exec`, `delegate_to_claude_code`. AMC webhook listener wired up. One soul (`souls/default.md`). SQLite for delegation state. Synchronous delegation with a hard timeout. No DBOS yet. Goal: prove the loop works end-to-end — message in via AMC, reply out via AMC, one delegation completes.
-
-2. **v1 (next weekend).** Add `delegate_to_codex`, `check_delegation_status`, `get_delegation_output`, `kill_delegation`. Add DBOS-backed `monitor_delegation` workflow. Add Logfire. Goal: 90-minute delegations work and survive a `kill -9` of Capo.
-
-3. **v2.** Additional personas in `souls/`. Per-project memory files. Multi-delegation summaries. Approval flows for risky tool calls (Pydantic AI supports tool approval natively).
-
-4. **v3+.** Calendar awareness, scheduled tasks, evals (Pydantic Evals) for routing decisions, second opinions across delegations. New connectors (Slack, etc.) land in AMC, not here — Capo gets them for free.
-
-Resist building v3 features into v0. Capo is small on purpose.
-
 ## Why this works for your case
 
 - Capo stays small (~500 lines of Python plus a handful of markdown files in `souls/` and `prompts/`). You can read and modify it.
