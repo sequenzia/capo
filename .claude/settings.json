@@ -1,0 +1,11 @@
+{
+  "env": {
+    "CLAUDE_CODE_TASK_LIST_ID": "capo"
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledPlugins": {
+    "agent-alchemy-dev-tools@agent-alchemy": true,
+    "agent-alchemy-git-tools@agent-alchemy": true,
+    "agent-alchemy-sdd-tools@agent-alchemy": true
+  }
+}
