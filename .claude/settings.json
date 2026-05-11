@@ -7,8 +7,8 @@
     "agent-alchemy-dev-tools@agent-alchemy": true,
     "agent-alchemy-git-tools@agent-alchemy": true,
     "agent-alchemy-sdd-tools@agent-alchemy": true,
-    "pydantic-ai@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "logfire@claude-plugins-official": true
+    "ai@pydantic-skills": true,
+    "logfire@pydantic-skills": true
   }
 }
