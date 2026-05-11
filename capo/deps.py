@@ -138,6 +138,12 @@ class CapoDeps:
         Resolved internal user id for the current AMC envelope
         (see :mod:`capo.transport.user_resolver`). Optional during boot;
         the dispatcher (Task #11) populates it per-invocation.
+    thread_id:
+        Internal thread id (e.g. ``"amc:<channel_id>"``) for the current
+        turn. Optional during boot; delegation tools persist it on the
+        ``delegations`` row as ``parent_thread_id`` so completion
+        notifications can be routed back to the originating channel
+        (spec §5.3 + §5.6).
     workspaces_root, projects_root:
         Convenience pointers (mirror ``settings.paths.*``) used by
         delegation tools in later phases.
@@ -147,6 +153,7 @@ class CapoDeps:
     http_client: httpx.AsyncClient
     web_search_client: WebSearchClient | None = None
     user_id: str | None = None
+    thread_id: str | None = None
     workspaces_root: Path | None = field(default=None)
     projects_root: Path | None = field(default=None)
 
@@ -158,6 +165,7 @@ class CapoDeps:
         *,
         web_search_client: WebSearchClient | None = None,
         user_id: str | None = None,
+        thread_id: str | None = None,
     ) -> CapoDeps:
         """Convenience constructor that mirrors path fields from ``settings``.
 
@@ -169,6 +177,7 @@ class CapoDeps:
             http_client=http_client,
             web_search_client=web_search_client,
             user_id=user_id,
+            thread_id=thread_id,
             workspaces_root=settings.paths.workspaces_root,
             projects_root=settings.paths.projects_root,
         )

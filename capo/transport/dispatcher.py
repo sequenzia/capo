@@ -69,6 +69,7 @@ from capo.memory.conversation import (
     load_history,
     thread_id_for_amc,
 )
+from capo.tools.basic import ApprovalRequired
 from capo.transport.amc_client import (
     AMCError,
     AMCInboundEnvelope,
@@ -102,6 +103,21 @@ CHANNEL_NOT_FOUND_REPLY: str = "I can't reach that channel anymore"
 INTERNAL_ERROR_REPLY: str = (
     "Something went wrong handling your message. Capo will retry."
 )
+
+
+def format_approval_required_reply(exc: ApprovalRequired) -> str:
+    """Render the Phase-2 stub reply for an :class:`ApprovalRequired` exception.
+
+    The full approval workflow (§5.8) lands in Phase 4. Phase 2 catches the
+    exception at the dispatcher boundary and replies with a fixed stub that
+    surfaces the original command + reason so the user sees *why* the agent
+    bailed. Wording is locked: tests assert this exact format so a future
+    Phase-4 rewrite stays intentional rather than accidental.
+    """
+    return (
+        f"That action ({exc.command}) needs approval. "
+        f"Reason: {exc.reason}. Full approval flow lands in Phase 4."
+    )
 
 
 # Type alias: a zero-arg callable returning a fresh sqlite3.Connection. The
@@ -312,6 +328,29 @@ class ChannelWorker:
 
                 await asyncio.to_thread(_persist, new_messages)
             reply_text = str(result.output)
+        except ApprovalRequired as exc:
+            # A Phase-2 tool refused to auto-run and asked for user
+            # approval (spec §5.8). Phase 4 will route this through a
+            # real approval prompt; Phase 2 just surfaces a stub reply
+            # so the user knows *why* the agent stopped.
+            logger.info(
+                "dispatcher tool requires approval: channel_id=%s "
+                "message_id=%s user_id=%s command=%r reason=%r",
+                self.channel_id,
+                envelope.id,
+                user_id,
+                exc.command,
+                exc.reason,
+                extra={
+                    "event": "capo.dispatcher.tool.approval_required",
+                    "channel_id": self.channel_id,
+                    "message_id": envelope.id,
+                    "user_id": user_id,
+                    "approval_command": exc.command,
+                    "approval_reason": exc.reason,
+                },
+            )
+            reply_text = format_approval_required_reply(exc)
         except Exception as exc:
             # Agent / memory failure. Log full traceback and fall through to
             # the generic error reply path.
@@ -618,4 +657,5 @@ __all__ = [
     "Dispatcher",
     "INTERNAL_ERROR_REPLY",
     "PLATFORM_AUTH_REPLY",
+    "format_approval_required_reply",
 ]

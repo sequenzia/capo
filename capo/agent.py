@@ -230,8 +230,15 @@ def build_agent(
     if register_tools and hasattr(agent, "tool"):
         # Local import keeps capo.tools out of the import graph for the
         # Settings-only "is the config valid" boot path.
+        from capo.tools import register_phase2_tools
         from capo.tools.basic import register_basic_tools
 
         register_basic_tools(agent)
+        # Phase-2 tools layer onto the same agent (spec §5.3-§5.5, §9.2):
+        # shell_exec + the four delegation tools + delegate_to_claude_code.
+        # Each ``build_agent`` call constructs a fresh ``Agent``, so this
+        # double-call only happens once per agent instance — re-importing
+        # ``capo.agent`` is safe.
+        register_phase2_tools(agent)
 
     return agent
