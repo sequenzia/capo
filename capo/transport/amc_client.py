@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 # ---------------------------------------------------------------------------
 # Constants — keep verbatim per §7.5 contract.
@@ -80,6 +80,15 @@ class AMCInboundEnvelope(BaseModel):
     ``extra="allow"`` matches the spec note "Pydantic ``extra='allow'``" so
     AMC passthrough fields (platform-native metadata) flow through untouched
     without forcing a schema bump on every AMC iteration.
+
+    Wire compatibility
+    ------------------
+    The live AMC server emits a nested sender object (``sender.id``,
+    ``sender.display_name``, ``sender.person_id``) and a ``timestamp`` field
+    rather than the flat ``sender_id`` / ``ts`` originally written into the
+    spec. A pre-validator normalizes both shapes into the canonical flat
+    fields so the rest of the codebase (dispatcher, user_resolver,
+    conversation memory) keeps the simple string contract.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -91,15 +100,38 @@ class AMCInboundEnvelope(BaseModel):
     ts: str  # ISO8601; left as ``str`` to preserve the wire format verbatim.
     approval_id: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_amc_wire_format(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if "sender_id" not in data:
+            sender = data.get("sender")
+            if isinstance(sender, dict) and isinstance(sender.get("id"), str):
+                data["sender_id"] = sender["id"]
+        if "ts" not in data and isinstance(data.get("timestamp"), str):
+            data["ts"] = data["timestamp"]
+        return data
+
 
 class SendResult(BaseModel):
-    """Response body for ``POST /messages/send`` per §7.5."""
+    """Response body for ``POST /messages/send``.
+
+    The §7.5 spec documents ``{message_id, channel_id, status}`` but the live
+    AMC server returns ``{message_id, sent_at}`` (no ``channel_id`` echo,
+    timestamp instead of status string). We only require ``message_id`` (the
+    one field every caller actually uses) and accept the rest via
+    ``extra='allow'``. ``channel_id`` / ``status`` / ``sent_at`` are exposed
+    as optional fields so callers that want them get typed access without
+    having to dip into ``model_extra``.
+    """
 
     model_config = ConfigDict(extra="allow")
 
     message_id: str
-    channel_id: str
-    status: str  # documented value: ``"sent"``
+    channel_id: str | None = None
+    status: str | None = None
+    sent_at: str | None = None
 
 
 class MarkReadResult(BaseModel):
@@ -430,13 +462,20 @@ class AMCClient:
         Retries ``RATE_LIMITED`` honoring ``Retry-After`` and transient 5xx.
         Does NOT retry ``PLATFORM_AUTH``, ``CHANNEL_NOT_FOUND``,
         ``ATTACHMENT_TOO_LARGE``, or ``VALIDATION_ERROR``.
+
+        Wire-format notes
+        -----------------
+        * The JSON key for ``reply_to_message_id`` on the wire is ``reply_to``
+          (live AMC ``/messages/send`` rejects ``reply_to_message_id`` as an
+          unknown field). Omitted from the body when ``None`` — AMC rejects
+          explicit nulls with ``extra_forbidden``.
+        * The ``approval`` field is not yet accepted by AMC; it is reserved
+          for Phase 4 and silently dropped from the outbound body for now.
         """
-        payload: dict[str, Any] = {
-            "channel_id": channel_id,
-            "text": text,
-            "reply_to_message_id": reply_to_message_id,
-            "approval": approval,
-        }
+        payload: dict[str, Any] = {"channel_id": channel_id, "text": text}
+        if reply_to_message_id is not None:
+            payload["reply_to"] = reply_to_message_id
+        _ = approval  # Phase 4 — currently dropped at the AMC boundary.
         key = idempotency_key if idempotency_key is not None else str(uuid.uuid4())
         body = await self._request(
             method="POST",

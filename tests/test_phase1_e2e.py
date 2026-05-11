@@ -277,7 +277,7 @@ async def test_phase1_e2e_signed_webhook_flows_through_full_pipeline(
     assert len(amc_record["mark_read"]) == 1
     send_payload = json.loads(amc_record["send"][0].content.decode("utf-8"))
     assert send_payload["channel_id"] == envelope["channel_id"]
-    assert send_payload["reply_to_message_id"] == envelope["id"]
+    assert send_payload["reply_to"] == envelope["id"]
     mark_payload = json.loads(amc_record["mark_read"][0].content.decode("utf-8"))
     assert mark_payload["message_ids"] == [envelope["id"]]
 

@@ -306,11 +306,13 @@ class TestResponseShapes:
         await client.aclose()
 
         body = json.loads(recorded[0].content)
+        # ``reply_to_message_id`` maps to the AMC wire field ``reply_to``;
+        # ``approval`` is reserved for Phase 4 and silently dropped from
+        # the body until AMC's send schema accepts it.
         assert body == {
             "channel_id": "c",
             "text": "t",
-            "reply_to_message_id": "m-0",
-            "approval": approval,
+            "reply_to": "m-0",
         }
 
     async def test_mark_read_returns_both_lists(self) -> None:

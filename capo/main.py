@@ -80,6 +80,25 @@ def _configure_logging(level: int = logging.INFO) -> None:
     logger.propagate = False
 
 
+def _export_provider_secrets_to_env(settings: Settings) -> None:
+    """Bridge LLM-provider API keys from validated Settings into ``os.environ``.
+
+    The config loader intentionally keeps ``.env`` values out of the process
+    environment (see ``Settings.load`` docstring). But Pydantic AI's
+    auto-resolved providers (``AnthropicProvider``, ``OpenAIProvider``) read
+    their API keys from ``os.environ`` when no explicit ``api_key`` is passed.
+    This helper makes the boot-time bridge explicit and localized to one
+    place. Values from ``.env`` win over any pre-existing process env vars,
+    matching the precedence inside ``Settings.load`` itself.
+    """
+    if settings.anthropic_api_key is not None:
+        os.environ["ANTHROPIC_API_KEY"] = (
+            settings.anthropic_api_key.get_secret_value()
+        )
+    if settings.openai_api_key is not None:
+        os.environ["OPENAI_API_KEY"] = settings.openai_api_key.get_secret_value()
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="capo",
@@ -325,6 +344,13 @@ def main(argv: list[str] | None = None) -> int:
             # missing-config error pattern.
             sys.stderr.write(f"capo: {exc}\n")
             return 2
+
+        # Pydantic AI's auto-provider lookup (AnthropicProvider, OpenAIProvider)
+        # reads ANTHROPIC_API_KEY / OPENAI_API_KEY from os.environ. The config
+        # loader keeps .env values out of os.environ to stay pure, so we bridge
+        # them here at the application boot path — once, after Settings is
+        # validated.
+        _export_provider_secrets_to_env(settings)
 
     # Construct the Pydantic AI agent (SOUL + ops prompt) — spec §5.1.
     # Imported lazily so the no-config boot path stays import-free of
