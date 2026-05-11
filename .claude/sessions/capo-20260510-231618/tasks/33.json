@@ -1,0 +1,26 @@
+{
+  "id": "33",
+  "subject": "Implement notify_user DBOS step (no agent re-entry)",
+  "description": "In `capo/workflows/delegation.py`, implement `notify_user` as a `@DBOS.step` that sends the completion message via `amc_client.send` using `parent_thread_id` from the `delegations` row. **Never** re-enters the agent loop. Idempotency key derived from `(delegation_id, \"completion\")`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Reads `parent_thread_id`, `summary`, `cost_usd`, `runtime_seconds` from `delegations` row.\n- [ ] Calls `amc_client.send(channel_id=parent_thread_id, text=<formatted summary>, idempotency_key=<derived>)`.\n- [ ] Step is registered as `@DBOS.step` and uses idempotency framework.\n- [ ] Step does NOT call the agent loop; it directly composes the notification message in code (per §5.6 acceptance).\n\n_Edge Cases:_\n- [ ] Restart between completion and notify: idempotency key prevents double-send (matches §10.2 step 6: \"AMC mock records exactly one POST\").\n\n_Error Handling:_\n- [ ] AMC `CHANNEL_NOT_FOUND` on the parent thread: log delegation as orphaned and emit a Logfire span; do not retry.\n\n**Testing Requirements:**\n• Integration: complete run sends exactly one notification (verified via call count + idempotency-key header)\n• Integration: restart mid-notify produces zero or one final message, never two\n\nSource: internal/specs/capo-SPEC.md Sections 5.6, 9.3, 10.2",
+  "activeForm": "Implementing notify_user DBOS step",
+  "status": "completed",
+  "blocks": [
+    "36"
+  ],
+  "blockedBy": [
+    "30",
+    "12",
+    "29"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "DBOS Durable Monitoring",
+    "task_uid": "internal/specs/capo-SPEC.md:dbos:notify:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume"
+  }
+}

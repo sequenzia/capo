@@ -1,0 +1,29 @@
+{
+  "id": "38",
+  "subject": "Add approvals table via Alembic migration",
+  "description": "Write a new Alembic migration `migrations/00X_approvals.py` creating the `approvals` table per §5.8 and §7.3 plus index `idx_approvals_pending`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Migration creates `approvals` table with columns: `approval_id TEXT PK`, `user_id TEXT NOT NULL REFERENCES users`, `thread_id TEXT NOT NULL`, `action_kind TEXT NOT NULL`, `action_payload_json TEXT NOT NULL`, `status TEXT NOT NULL CHECK (status IN ('pending','approved','denied','expired'))`, `created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`, `resolved_at TIMESTAMP`, `choice TEXT`, `reason TEXT`.\n- [ ] Creates `CREATE INDEX idx_approvals_pending ON approvals(status) WHERE status='pending'`.\n- [ ] Migration runs cleanly forward and (if reversible) backward.\n- [ ] No FK from `approvals` to `delegations` (per §5.8: linked through `action_payload_json` only).\n\n_Edge Cases:_\n- [ ] Migration applied on a database that already has the table (re-running): no-op.\n\n**Testing Requirements:**\n• Integration: `alembic upgrade head` adds the table with all columns and the partial index\n• Integration: insert with invalid `status` rejected by check constraint\n\nSource: internal/specs/capo-SPEC.md Sections 5.8, 7.3, 9.4",
+  "activeForm": "Adding approvals table migration",
+  "status": "completed",
+  "blocks": [
+    "39",
+    "47"
+  ],
+  "blockedBy": [
+    "8",
+    "36"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Approval Flows",
+    "task_uid": "internal/specs/capo-SPEC.md:approvals:migration:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows",
+    "produces_for": [
+      "39"
+    ]
+  }
+}

@@ -5,20 +5,36 @@ inspect or terminate Claude Code (and later Codex) delegations:
 
 * :func:`check_delegation_status` — side-effect-free status snapshot.
 * :func:`get_delegation_output` — tail recent ``stdout`` / ``event`` chunks.
-* :func:`kill_delegation` — request SIGTERM (always goes through approval
-  in Phase 4; Phase 2 just raises :class:`ApprovalRequired`).
+* :func:`kill_delegation` — kill a delegation. Owner kills proceed directly;
+  non-owner kills route through the §5.8 / §5.10 approval workflow.
 * :func:`list_delegations` — recent delegations for the current ``user_id``.
 
-Phase 2 vs. Phase 4
--------------------
+Phase 2 vs. Phase 4 (Task #44)
+------------------------------
 
-Per spec §5.8, every ``kill_delegation`` invocation **requires user
-approval** — there is no "force-kill from the agent" path in the V1 user
-contract. Phase 2 raises :class:`ApprovalRequired` so the agent loop has a
-stable failure signal; Phase 4 (task #41) wires the actual approval
-prompt and routes back into :func:`_kill_delegation_forced` once the user
-says yes. The integration test in task #27 exercises the forced path
-directly to prove the kill code path works end-to-end.
+Phase 2 implemented :func:`kill_delegation` as an unconditional
+:class:`ApprovalRequired` raise — there was no approval workflow to
+route through yet. Task #44 (§5.8 + §5.10 + §7.5) wires the actual
+approval gate:
+
+* If the requester **is** the delegation owner
+  (``delegations.user_id == requester_user_id``): kill proceeds directly
+  with no approval round-trip (the user has authority over their own
+  delegations per §5.10).
+* If the requester is NOT the owner: route through
+  :func:`capo.workflows.approval.request_approval` with
+  ``request_type='kill_delegation'``. On ``approved`` the kill proceeds;
+  on ``denied`` / ``expired`` / ``cancelled`` we raise
+  :class:`~capo.tools.basic.ApprovalRejected`.
+* When the kill proceeds (either branch), any **other** pending approval
+  rows tied to the same ``delegation_id`` (e.g. the killed delegation
+  was itself waiting on an out-of-root approval) are force-resolved via
+  :func:`capo.workflows.approval.force_resolve_approval` so the
+  awaiting workflows fall out of ``DBOS.recv``.
+
+The Phase 2 :func:`_kill_delegation_forced` helper remains and is the
+shared post-approval implementation: both the owner direct-kill path and
+the non-owner approved path call it.
 
 Schema notes (spec §7.3 / migrations/versions/001_init.py)
 ---------------------------------------------------------
@@ -357,13 +373,32 @@ async def kill_delegation(
     delegation_id: str,
     reason: str,
 ) -> dict[str, Any]:
-    """Request termination of a running delegation.
+    """Kill a running delegation, gating non-owner kills behind approval.
 
-    Per spec §5.8, **every** ``kill_delegation`` call requires user
-    approval — there is no "force-kill from the agent" path in V1. Phase
-    2 raises :class:`ApprovalRequired` so the agent loop has a stable
-    failure signal; Phase 4 wires the actual approval prompt and routes
-    the approved call into :func:`_kill_delegation_forced`.
+    Behavior (spec §5.8, §5.10, §7.5; Task #44):
+
+    * If the row is already in a terminal state
+      (``completed``/``failed``/``killed``): no-op fast-path. Returns
+      ``{"status": "already_terminal", ...}`` without invoking the
+      approval workflow.
+    * If the requesting user (``ctx.deps.user_id``) **is** the owner
+      (``delegations.user_id == requester_user_id``): kill proceeds
+      directly — the user has authority over their own delegations.
+    * Otherwise (non-owner kill): route through the §5.8 approval
+      workflow with ``request_type='kill_delegation'``. On ``approved``
+      the kill proceeds; on ``denied``/``expired``/``cancelled`` raise
+      :class:`~capo.tools.basic.ApprovalRejected`.
+    * When the kill proceeds (either branch), **other** pending approval
+      rows whose ``request_payload.delegation_id`` matches this
+      ``delegation_id`` are force-resolved with ``status='cancelled'``
+      via :func:`capo.workflows.approval.force_resolve_approval` so any
+      workflows awaiting on them fall out of ``recv``.
+
+    If the approval infrastructure is genuinely unavailable (DBOS not
+    launched, approval module not importable) for a non-owner kill, we
+    fall back to :class:`~capo.tools.basic.ApprovalRequired` for
+    backwards compatibility with unit tests and degraded environments —
+    mirroring the §5.8 ``shell_exec`` gating contract.
 
     Args:
         delegation_id: PK of the row to kill.
@@ -371,18 +406,384 @@ async def kill_delegation(
             on the row's ``summary`` column after a successful kill so
             the user sees it on the completion notification.
 
+    Returns:
+        Dict with ``status`` either ``"killed"`` (kill executed) or
+        ``"already_terminal"`` (row was already terminal — idempotent
+        no-op), ``delegation_id``, and ``reason``. ``cascaded_approvals``
+        (int) records how many tied-pending approvals were
+        force-resolved on the kill path.
+
     Raises:
-        ApprovalRequired: Always, in Phase 2. ``command`` =
-            ``f"kill_delegation({delegation_id})"``; ``reason`` is the
-            caller's reason (the approval UI will show this).
+        DelegationNotFound: ``delegation_id`` does not exist in the DB.
+        ApprovalRequired: Non-owner kill and the approval workflow
+            infrastructure is unavailable.
+        ApprovalRejected: Non-owner kill, approval workflow ran and
+            returned a non-``approved`` terminal status.
     """
-    # ``ctx`` is currently unused — Phase 4 will resolve the approver
-    # via ``ctx.deps.user_id`` and the (future) approvals subsystem.
-    # Touch it explicitly so static checkers don't complain.
-    _ = ctx
-    raise ApprovalRequired(
-        command=f"kill_delegation({delegation_id})", reason=reason
+    db_path = _db_path(ctx)
+
+    # 1. Look up the row so we can (a) short-circuit on terminal status
+    #    and (b) resolve ownership.
+    row = await asyncio.to_thread(
+        _read_owner_row, db_path, delegation_id
     )
+    if row is None:
+        raise DelegationNotFound(delegation_id)
+
+    current_status: str = row["status"]
+    if current_status in _TERMINAL_STATUSES:
+        # Edge case: kill on terminal row — idempotent no-op, no approval
+        # round-trip. Mirrors ``_kill_delegation_forced``.
+        return {
+            "status": "already_terminal",
+            "delegation_id": delegation_id,
+            "reason": reason,
+            "prior_status": current_status,
+        }
+
+    owner_user_id: str | None = row["user_id"]
+    requester_user_id: str | None = ctx.deps.user_id
+
+    # 2. Owner check — if requester owns the row, no approval required.
+    if (
+        requester_user_id is not None
+        and owner_user_id == requester_user_id
+    ):
+        result = await _kill_delegation_forced(ctx, delegation_id, reason)
+        cascaded = await _cascade_cancel_tied_approvals(
+            db_path,
+            delegation_id=delegation_id,
+            requester_user_id=requester_user_id,
+        )
+        if isinstance(result, dict):
+            result["cascaded_approvals"] = cascaded
+        return result
+
+    # 3. Non-owner kill — route through the approval workflow.
+    try:
+        decision = await _request_kill_approval(
+            ctx, delegation_id=delegation_id, reason=reason
+        )
+    except _KillApprovalUnavailableError as exc:
+        # Degraded environment (DBOS not launched, etc.). Mirror the
+        # shell_exec / §5.8 fallback contract.
+        raise ApprovalRequired(
+            command=f"kill_delegation({delegation_id})",
+            reason=(
+                f"non-owner kill requires approval and the approval "
+                f"workflow is unavailable ({exc.reason})"
+            ),
+        ) from exc
+
+    if decision.status == "approved":
+        logger.info(
+            "kill_delegation: approval %s approved by %s — killing %s",
+            decision.approval_id,
+            decision.resolved_by,
+            delegation_id,
+            extra={
+                "event": "capo.tools.delegations.kill_approved",
+                "approval_id": decision.approval_id,
+                "delegation_id": delegation_id,
+                "resolved_by": decision.resolved_by,
+            },
+        )
+        result = await _kill_delegation_forced(ctx, delegation_id, reason)
+        # Cascade-cancel any OTHER pending approvals tied to this
+        # delegation. The approval we just resolved (this kill_delegation
+        # one) is already terminal, so it won't show up in the scan.
+        cascaded = await _cascade_cancel_tied_approvals(
+            db_path,
+            delegation_id=delegation_id,
+            requester_user_id=requester_user_id,
+        )
+        if isinstance(result, dict):
+            result["cascaded_approvals"] = cascaded
+        return result
+
+    logger.info(
+        "kill_delegation: approval %s resolved %s by %s for %s",
+        decision.approval_id,
+        decision.status,
+        decision.resolved_by,
+        delegation_id,
+        extra={
+            "event": "capo.tools.delegations.kill_rejected",
+            "approval_id": decision.approval_id,
+            "delegation_id": delegation_id,
+            "status": decision.status,
+            "resolved_by": decision.resolved_by,
+        },
+    )
+    # Imported lazily so this module doesn't unconditionally pull
+    # ``capo.tools.basic.ApprovalRejected`` (which transitively imports
+    # the approval workflow types) into Phase-1 callers.
+    from capo.tools.basic import ApprovalRejected
+
+    raise ApprovalRejected(decision)
+
+
+class _KillApprovalUnavailableError(Exception):
+    """Raised internally when the approval workflow can't be reached.
+
+    Caught by :func:`kill_delegation` to fall back to
+    :class:`~capo.tools.basic.ApprovalRequired` so unit tests + non-DBOS
+    contexts keep their existing behavior. Mirrors the
+    :class:`capo.tools.basic.ApprovalUnavailableError` pattern from
+    Task #42.
+    """
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
+def _utc_iso_now() -> str:
+    """Caller-stable UTC ISO 8601 timestamp for the approvals row.
+
+    Mirrors :func:`capo.tools.basic._utc_iso_now`. Format
+    ``%Y-%m-%dT%H:%M:%SZ`` per §5.8.
+    """
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def _request_kill_approval(
+    ctx: RunContext[CapoDeps],
+    *,
+    delegation_id: str,
+    reason: str,
+) -> Any:
+    """Invoke the §5.8 approval workflow with ``request_type='kill_delegation'``.
+
+    Raises :class:`_KillApprovalUnavailableError` (caught by
+    :func:`kill_delegation`) when the approval workflow can't be reached.
+    """
+    try:
+        from capo.workflows import is_launched
+        from capo.workflows.approval import request_approval
+    except ImportError as exc:  # pragma: no cover - DBOS is a hard dep
+        raise _KillApprovalUnavailableError(
+            f"approval workflow module not importable: {exc}"
+        ) from exc
+
+    try:
+        launched = is_launched()
+    except Exception as exc:  # noqa: BLE001 - defensive
+        raise _KillApprovalUnavailableError(
+            f"could not check DBOS launch state: {exc!r}"
+        ) from exc
+    if not launched:
+        raise _KillApprovalUnavailableError("DBOS not launched")
+
+    settings = ctx.deps.settings
+    db_path = getattr(getattr(settings, "paths", None), "db_path", None)
+    if db_path is None:
+        raise _KillApprovalUnavailableError(
+            "settings.paths.db_path is not configured"
+        )
+
+    # Caller-supplied deterministic inputs — generated BEFORE the call so
+    # a workflow replay observes the same approval_id + requested_at.
+    import uuid
+
+    approval_id = uuid.uuid4().hex
+    requested_at = _utc_iso_now()
+    request_payload: dict[str, Any] = {
+        "delegation_id": delegation_id,
+        "reason": reason,
+    }
+
+    timeout_s = float(
+        getattr(getattr(settings, "approval", None), "timeout_seconds", 0)
+        or 0
+    )
+
+    kwargs: dict[str, Any] = dict(
+        request_type="kill_delegation",
+        request_payload=request_payload,
+        requester_user_id=ctx.deps.user_id,
+        parent_thread_id=ctx.deps.thread_id,
+        requested_at=requested_at,
+        db_path=db_path,
+    )
+    if timeout_s > 0:
+        kwargs["timeout_seconds"] = timeout_s
+
+    logger.info(
+        "kill_delegation: requesting approval for delegation %s "
+        "(approval_id=%s)",
+        delegation_id,
+        approval_id,
+        extra={
+            "event": "capo.tools.delegations.kill_approval_requested",
+            "approval_id": approval_id,
+            "delegation_id": delegation_id,
+        },
+    )
+
+    return await request_approval(approval_id, **kwargs)
+
+
+async def _cascade_cancel_tied_approvals(
+    db_path: Path,
+    *,
+    delegation_id: str,
+    requester_user_id: str | None,
+) -> int:
+    """Force-cancel all pending approvals whose payload references ``delegation_id``.
+
+    Called after a kill proceeds (either owner-direct or post-approval).
+    For each pending approval row whose
+    ``request_payload.delegation_id == delegation_id``, send
+    ``force_resolve_approval(workflow_id, status='cancelled', ...)`` so
+    the awaiting workflow falls out of ``DBOS.recv``.
+
+    Returns the number of approvals that were force-resolved.
+
+    Notes:
+        * The scan runs against the durable ``approvals`` table — uses
+          the ``idx_approvals_pending_sweep`` index (filters
+          ``status='pending'`` first).
+        * If the approvals table or the workflow module is unavailable
+          (Phase 2 tests, no DBOS), the scan returns 0 silently — the
+          kill itself has already succeeded; the cascade is best-effort.
+        * The kill_delegation approval row itself (request_type=
+          ``kill_delegation`` keyed by the same ``delegation_id``) is
+          handled by the inbound dispatcher (Task #40) on the
+          ``approved`` path — it's already terminal by the time this
+          scan runs, so it's filtered out by the ``status='pending'``
+          predicate.
+    """
+    try:
+        from capo.workflows.approval import force_resolve_approval
+    except ImportError:  # pragma: no cover - DBOS is a hard dep
+        return 0
+
+    rows = await asyncio.to_thread(
+        _find_pending_approvals_for_delegation, db_path, delegation_id
+    )
+    if not rows:
+        return 0
+
+    cancelled = 0
+    resolver = f"system:killer:{requester_user_id or 'unknown'}"
+    cancel_reason = f"delegation {delegation_id} killed"
+    for row in rows:
+        workflow_id = row.get("workflow_id")
+        approval_id = row.get("approval_id")
+        if not workflow_id:
+            logger.warning(
+                "kill_delegation: cascade-cancel skipped — approval %s "
+                "has no workflow_id",
+                approval_id,
+                extra={
+                    "event": (
+                        "capo.tools.delegations."
+                        "kill_cascade_no_workflow_id"
+                    ),
+                    "approval_id": approval_id,
+                    "delegation_id": delegation_id,
+                },
+            )
+            continue
+        try:
+            await force_resolve_approval(
+                str(workflow_id),
+                status="cancelled",
+                resolved_by=resolver,
+                reason=cancel_reason,
+            )
+        except Exception as exc:  # noqa: BLE001 - best-effort
+            logger.warning(
+                "kill_delegation: force_resolve_approval failed for "
+                "approval %s (workflow=%s): %r",
+                approval_id,
+                workflow_id,
+                exc,
+                extra={
+                    "event": (
+                        "capo.tools.delegations.kill_cascade_failed"
+                    ),
+                    "approval_id": approval_id,
+                    "workflow_id": workflow_id,
+                    "delegation_id": delegation_id,
+                },
+            )
+            continue
+        cancelled += 1
+        logger.info(
+            "kill_delegation: cascade-cancelled approval %s "
+            "(workflow=%s) tied to delegation %s",
+            approval_id,
+            workflow_id,
+            delegation_id,
+            extra={
+                "event": "capo.tools.delegations.kill_cascade_cancelled",
+                "approval_id": approval_id,
+                "workflow_id": workflow_id,
+                "delegation_id": delegation_id,
+            },
+        )
+    return cancelled
+
+
+def _find_pending_approvals_for_delegation(
+    db_path: Path, delegation_id: str
+) -> list[dict[str, Any]]:
+    """SELECT pending approvals whose payload references ``delegation_id``.
+
+    The ``approvals.request_payload`` column is JSON text. We use
+    SQLite's ``json_extract`` so the filter happens in-DB without
+    materializing every pending row in Python.
+
+    If the approvals table is missing (Phase 2 tests that haven't run
+    the migration) this returns ``[]`` so the cascade is a no-op. Same
+    for any other unexpected SQL error — the kill itself is the
+    user-visible operation; the cascade is best-effort cleanup.
+    """
+    try:
+        conn = open_connection(db_path)
+    except Exception:  # noqa: BLE001 - best-effort
+        return []
+    try:
+        conn.row_factory = sqlite3.Row
+        try:
+            cur = conn.execute(
+                """
+                SELECT approval_id, workflow_id, request_payload
+                FROM approvals
+                WHERE status = 'pending'
+                  AND json_extract(request_payload, '$.delegation_id') = ?
+                """,
+                (delegation_id,),
+            )
+            rows = cur.fetchall()
+        except sqlite3.OperationalError:
+            # Table missing or json1 extension unavailable — best-effort.
+            return []
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+def _read_owner_row(
+    db_path: Path, delegation_id: str
+) -> dict[str, Any] | None:
+    """SELECT ``user_id`` + ``status`` for the kill-gating check.
+
+    Returns ``None`` when the row does not exist so the caller can raise
+    :class:`DelegationNotFound`.
+    """
+    conn = open_connection(db_path)
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT user_id, status FROM delegations WHERE id = ?",
+            (delegation_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return dict(row) if row else None
 
 
 async def _kill_delegation_forced(

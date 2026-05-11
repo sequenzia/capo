@@ -1,0 +1,25 @@
+{
+  "id": "42",
+  "subject": "Wire shell_exec approval gating to approval workflow",
+  "description": "In `capo/tools/basic.py`, change `shell_exec` so that non-allowlisted invocations (the `ApprovalRequired` Phase 2 stub) instead spawn the approval workflow with `action_kind='shell_exec'` and `action_payload={'command': ..., 'cwd': ...}`. On approve, execute; on deny/expire, return a clear tool error to the agent.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Non-allowlisted commands trigger the approval workflow (no longer raise `ApprovalRequired` to the agent loop).\n- [ ] Approval question text describes the command and cwd clearly enough for the user to make a decision.\n- [ ] On approve: command executes via the same allowlist-bypassing code path; the result is returned to the agent normally.\n- [ ] On deny/expire: tool returns a structured error to the agent (\"user denied\" / \"approval expired\").\n\n_Edge Cases:_\n- [ ] Approval timed out: tool error includes \"expired\"; agent should NOT auto-retry.\n\n**Testing Requirements:**\n• Integration: non-allowlisted command → approval question → approve → command runs\n• Integration: same flow with deny → command does not run; agent sees \"denied\"\n• Integration: same flow with timeout → command does not run; agent sees \"expired\"\n\nSource: internal/specs/capo-SPEC.md Sections 5.8, 6.2, 9.4",
+  "activeForm": "Wiring shell_exec approval gating",
+  "status": "completed",
+  "blocks": [
+    "47"
+  ],
+  "blockedBy": [
+    "25",
+    "39"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Approval Flows",
+    "task_uid": "internal/specs/capo-SPEC.md:approval:shell-gating:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows"
+  }
+}

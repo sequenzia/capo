@@ -1,0 +1,25 @@
+{
+  "id": "51",
+  "subject": "Enforce span taxonomy from §6.5 across the codebase",
+  "description": "Build `capo/observability/spans.py` with helpers/decorators producing the span names + attributes from §6.5. Add the spans at every required site: boot, webhook in, dispatcher handle, agent run, tool execution, delegation spawn/monitor/complete, AMC send, memory compact, budget cap, approval lifecycle.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Every span in §6.5 is emitted at the documented site with the documented attributes.\n- [ ] All spans propagate the parent trace ID.\n- [ ] All errors include exception class + message attributes.\n- [ ] `capo.tool.<name>` uses the agent-facing tool name (snake_case) per §6.5 footnote.\n- [ ] Span name format strictly matches §6.5 (no drift in punctuation or casing).\n\n_Edge Cases:_\n- [ ] Spans suppressed when `observability.logfire_enabled=false` (no-op decorator).\n\n**Testing Requirements:**\n• Unit: each helper produces span with expected name + attributes (mocked Logfire)\n• Integration: end-to-end CC delegation produces spans for boot → webhook → dispatcher → agent → tool → spawn → monitor → complete → notify, in correct parent/child relationships\n\nSource: internal/specs/capo-SPEC.md Sections 6.5, 9.5",
+  "activeForm": "Enforcing span taxonomy from §6.5",
+  "status": "completed",
+  "blocks": [
+    "60",
+    "63"
+  ],
+  "blockedBy": [
+    "50"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "M",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Observability",
+    "task_uid": "internal/specs/capo-SPEC.md:logfire:taxonomy:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

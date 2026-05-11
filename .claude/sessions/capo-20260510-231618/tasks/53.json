@@ -1,0 +1,26 @@
+{
+  "id": "53",
+  "subject": "Implement session_new / session_status / session_clear NL agent tools",
+  "description": "Build `capo/tools/session.py` and register `session_new`, `session_status`, `session_clear` as Pydantic AI agent tools so the agent can route natural-language equivalents to the same actions as the slash commands. Implementation reuses the same code paths to keep behavior consistent.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `session_new`, `session_status`, `session_clear` registered with the agent.\n- [ ] Tools call into the same backend functions as the slash commands (single source of truth).\n- [ ] Tool docstrings make NL routing intent unambiguous to the model.\n\n_Edge Cases:_\n- [ ] If user message matches a slash command, the slash parser handles it (zero tokens) — these tools only fire for NL routing.\n\n**Testing Requirements:**\n• Unit: each tool returns the same shape as its slash command counterpart\n• Integration: NL prompt \"start a fresh chat\" routes to `session_new`\n\nSource: internal/specs/capo-SPEC.md Sections 5.10, 9.5",
+  "activeForm": "Implementing session_new/status/clear NL agent tools",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "52",
+    "14",
+    "26"
+  ],
+  "metadata": {
+    "priority": "medium",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Session Control + Slash Commands",
+    "task_uid": "internal/specs/capo-SPEC.md:session:nl-tools:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

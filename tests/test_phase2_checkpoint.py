@@ -66,6 +66,11 @@ from capo.tools.delegations import (
     _kill_delegation_forced,
     check_delegation_status,
 )
+from capo.workflows import destroy_dbos, init_dbos, is_launched, launch_dbos
+from capo.workflows.delegation import (
+    _DELEGATION_REGISTRY,
+    register_amc_sender,
+)
 
 # ---------------------------------------------------------------------------
 # Scaffolding — mirrors tests/test_delegate_to_claude_code.py.
@@ -189,6 +194,21 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.fixture(autouse=True)
+def _ensure_clean_dbos_state():
+    """DBOS is a process-level singleton; clean teardown between tests."""
+    with contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    yield
+    with contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    with contextlib.suppress(Exception):
+        register_amc_sender(None)
+    if is_launched():
+        with contextlib.suppress(Exception):
+            destroy_dbos()
+
+
 @pytest.fixture
 def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
     projects_root = tmp_path / "projects"
@@ -217,6 +237,13 @@ def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
         conn.execute(_DELEGATION_OUTPUT_DDL)
     finally:
         conn.close()
+
+    # Task #35: delegate_to_claude_code hands off to DBOS
+    # monitor_delegation. Launch DBOS here so the integration tests in
+    # this file (which drive real subprocesses through the spawn site)
+    # don't trip the DBOSNotLaunchedError guard.
+    init_dbos(settings)
+    launch_dbos()
 
     return settings, projects_root, workspaces_root
 
@@ -710,25 +737,29 @@ async def test_shell_exec_smoke_allowlisted_commands(
 ) -> None:
     """A handful of allowlisted commands run cleanly through ``shell_exec``.
 
-    Calls ``shell_exec`` directly (it's a sync function — the registered
+    Calls ``shell_exec`` directly (now async after Task #42 — the registered
     tool wraps it 1:1, so the function-level invocation exercises the
     same path).
     """
     deps = make_deps()
 
     # pwd in the git repo.
-    pwd_result = shell_exec(_ctx(deps), "pwd", cwd=str(git_repo_in_projects))
+    pwd_result = await shell_exec(
+        _ctx(deps), "pwd", cwd=str(git_repo_in_projects)
+    )
     assert isinstance(pwd_result, ShellResult)
     assert pwd_result.exit_code == 0
     assert str(git_repo_in_projects.resolve()) in pwd_result.stdout
 
     # ls of the repo: README.md must be there.
-    ls_result = shell_exec(_ctx(deps), "ls", cwd=str(git_repo_in_projects))
+    ls_result = await shell_exec(
+        _ctx(deps), "ls", cwd=str(git_repo_in_projects)
+    )
     assert ls_result.exit_code == 0
     assert "README.md" in ls_result.stdout
 
     # git log -n 1: succeeds because the fixture made one initial commit.
-    log_result = shell_exec(
+    log_result = await shell_exec(
         _ctx(deps), "git log -n 1", cwd=str(git_repo_in_projects)
     )
     assert log_result.exit_code == 0

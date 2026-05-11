@@ -1,0 +1,25 @@
+{
+  "id": "44",
+  "subject": "Wire kill_delegation approval gating",
+  "description": "In `capo/tools/delegations.py`, change `kill_delegation` so that ALL invocations spawn the approval workflow with `action_kind='kill_delegation'` and `action_payload={'delegation_id': ..., 'reason': ...}`. On approve, send SIGTERM to the PID, mark row `killed`, persist reason, notify user.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Every `kill_delegation(delegation_id, reason)` triggers approval before any side effect.\n- [ ] On approve: SIGTERM to the row's PID; if PID gone, mark `killed` and proceed.\n- [ ] On deny: no signal; tool returns \"denied\"; delegation continues.\n- [ ] On expired: no signal; tool returns \"expired\"; delegation continues.\n- [ ] Approval question includes the delegation's goal (read from `brief_json`) and runtime so the user has context.\n\n_Edge Cases:_\n- [ ] `kill_delegation` on already-completed delegation: no approval needed; tool returns \"already terminal\".\n- [ ] Subprocess does not exit within graceful window after SIGTERM: send SIGKILL, log escalation.\n\n**Testing Requirements:**\n• Integration: kill flow → approval question → approve → row `killed`, subprocess terminated\n• Integration: kill flow with deny → row stays `running`\n• Integration: kill on already-completed → no approval; tool returns \"already terminal\"\n\nSource: internal/specs/capo-SPEC.md Sections 5.5, 5.8, 9.4",
+  "activeForm": "Wiring kill_delegation approval gating",
+  "status": "completed",
+  "blocks": [
+    "47"
+  ],
+  "blockedBy": [
+    "24",
+    "39"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Approval Flows",
+    "task_uid": "internal/specs/capo-SPEC.md:approval:kill-gating:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows"
+  }
+}

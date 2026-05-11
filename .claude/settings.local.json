@@ -2,6 +2,11 @@
   "permissions": {
     "additionalDirectories": [
       "/Users/ada/prod/amc"
+    ],
+    "allow": [
+      "Bash(mkdir -p /Users/ada/dev/repos/capo/.claude/sessions/capo-20260510-231618)",
+      "Bash(cp -a /Users/ada/dev/repos/capo/.claude/sessions/__live_session__/. /Users/ada/dev/repos/capo/.claude/sessions/capo-20260510-231618/)",
+      "Bash(rm -rf /Users/ada/dev/repos/capo/.claude/sessions/__live_session__/* /Users/ada/dev/repos/capo/.claude/sessions/__live_session__/.lock)"
     ]
   }
 }

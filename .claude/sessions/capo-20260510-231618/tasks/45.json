@@ -1,0 +1,29 @@
+{
+  "id": "45",
+  "subject": "Implement delegate_to_codex tool (Codex spawn + reader)",
+  "description": "**Blocked on the §5.4/§7.5 spec amendment** (which captures S-1 findings). Once that lands, build `capo/tools/codex.py` with a `delegate_to_codex(brief: CodexBrief)` tool that mirrors `delegate_to_claude_code` lifecycle: persist row → spawn → register DBOS workflow → return handle.\n\n`CodexBrief` fields: `goal`, `repo_path`, `sandbox` (default from config), `constraints`, `success_criteria`, `relevant_files`, `model: str | None`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `CodexBrief` model defined with all fields per §5.4.\n- [ ] Tool follows same persistence-before-yield contract as CC.\n- [ ] Spawn argv exactly per the amended §7.5 Codex section.\n- [ ] Output reader follows the dispatched-by-agent strategy: CC reads `--output-format json` events; Codex reads its equivalent per amended §7.5.\n- [ ] `check_delegation_status`, `get_delegation_output`, `kill_delegation` work for Codex delegations identically.\n\n_Edge Cases:_\n- [ ] `agents.codex.enabled = false`: tool not registered (per §11.2 feature flag).\n- [ ] `repo_path` outside `projects_root`: same approval gate as CC.\n\n**Testing Requirements:**\n• Unit: brief model validation\n• Integration: full Codex spawn → row inserted → reader streams → handle returned (uses cheap-model mock if real Codex unavailable in CI)\n\nSource: internal/specs/capo-SPEC.md Sections 5.4, 7.5, 9.4 (after spec amendment)",
+  "activeForm": "Implementing delegate_to_codex tool",
+  "status": "completed",
+  "blocks": [
+    "46",
+    "47",
+    "59"
+  ],
+  "blockedBy": [
+    "37",
+    "22",
+    "30",
+    "27"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Tool — delegate_to_codex",
+    "task_uid": "internal/specs/capo-SPEC.md:codex:spawn:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows"
+  }
+}

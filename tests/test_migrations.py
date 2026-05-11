@@ -9,8 +9,8 @@ Covers the Phase-1 acceptance criteria from §7.3 / §9.1:
 - Foreign-key constraints are enforced at runtime (insert into ``delegations``
   with a non-existent ``user_id`` raises ``IntegrityError``).
 - Cross-table inserts that satisfy FKs succeed.
-- The ``approvals`` table is intentionally NOT created in this migration; it
-  lands in Phase 4 (#38).
+- The ``approvals`` table is added by migration ``002_approvals`` (Phase 4 /
+  task #38); detailed introspection lives in ``tests/test_approvals_migration.py``.
 """
 
 from __future__ import annotations
@@ -25,7 +25,8 @@ import pytest
 # Repo root = three levels up from this file: tests/ -> repo root.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Spec-mandated table set (excluding ``approvals``, which is Phase 4).
+# Spec-mandated table set after ``alembic upgrade head``
+# (001_init + 002_approvals + 004_costs; 003 only modifies an existing CHECK).
 EXPECTED_TABLES: frozenset[str] = frozenset(
     {
         "users",
@@ -35,6 +36,8 @@ EXPECTED_TABLES: frozenset[str] = frozenset(
         "delegation_output",
         "delegation_heartbeats",
         "daily_costs",
+        "approvals",
+        "costs",
     }
 )
 
@@ -45,6 +48,10 @@ EXPECTED_INDEXES: frozenset[str] = frozenset(
         "idx_delegations_user_status",
         "idx_delegations_started",
         "idx_output_delegation_ts",
+        "idx_approvals_pending_sweep",
+        "idx_approvals_parent_thread",
+        "idx_costs_parent_thread_recorded",
+        "idx_costs_user_recorded",
     }
 )
 
@@ -140,23 +147,6 @@ def test_upgrade_head_creates_all_tables_and_indexes(db_path: Path) -> None:
         assert EXPECTED_INDEXES.issubset(indexes), (
             f"missing indexes: {EXPECTED_INDEXES - indexes}"
         )
-    finally:
-        conn.close()
-
-
-@pytest.mark.skipif(shutil.which("uv") is None, reason="uv not on PATH")
-def test_approvals_table_not_created(db_path: Path) -> None:
-    """`approvals` is Phase 4 (#38) — must NOT be present in this migration."""
-    result = _run_alembic_upgrade(db_path)
-    assert result.returncode == 0
-
-    conn = sqlite3.connect(str(db_path))
-    try:
-        rows = conn.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='table' AND name='approvals'"
-        ).fetchall()
-        assert rows == [], "approvals must not be created in 001_init"
     finally:
         conn.close()
 

@@ -1,0 +1,27 @@
+{
+  "id": "34",
+  "subject": "Implement heartbeat step with frozen-threshold idempotency",
+  "description": "In `capo/workflows/delegation.py`, add the heartbeat step per §5.13. On crossing each configured threshold (default 15m, 1h, 4h from `[heartbeat] intervals_seconds`), send a one-line milestone update to `parent_thread_id`. The threshold list is captured from config at delegation start time and frozen on the `delegations.heartbeat_intervals_json` column. Each sent threshold recorded in `delegation_heartbeats` with `(delegation_id, threshold_seconds)` PK.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] At delegation start, config's `[heartbeat] intervals_seconds` is captured into `delegations.heartbeat_intervals_json`.\n- [ ] Workflow polls runtime; on crossing each frozen threshold, sends a one-line update via `amc_client.send` with idempotency key derived from `(delegation_id, str(threshold_seconds))`.\n- [ ] `delegation_heartbeats` row inserted on each successful send (PK enforces no duplicate).\n- [ ] Final completion notification ALWAYS sent regardless of threshold list (handled by `notify_user`, separate from heartbeat).\n\n_Edge Cases:_\n- [ ] Workflow restart between threshold crossing and send: idempotency key + PK prevent duplicate.\n- [ ] Config edited while delegation in flight: frozen list still controls (no behavior change mid-flight).\n- [ ] Delegation completes before next threshold: no extra heartbeat fired.\n\n**Testing Requirements:**\n• Integration: synthetic 90-min run sends 15m, 1h heartbeats and final completion (3 messages total)\n• Integration: restart between heartbeat fire and send → exactly one heartbeat per threshold\n\nSource: internal/specs/capo-SPEC.md Sections 5.13, 7.3, 9.3",
+  "activeForm": "Implementing heartbeat step",
+  "status": "completed",
+  "blocks": [
+    "36"
+  ],
+  "blockedBy": [
+    "30",
+    "12",
+    "29",
+    "8"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "M",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Live Progress Reporting",
+    "task_uid": "internal/specs/capo-SPEC.md:dbos:heartbeat:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume"
+  }
+}

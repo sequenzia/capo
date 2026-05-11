@@ -1,0 +1,25 @@
+{
+  "id": "40",
+  "subject": "Wire approval inbound routing in dispatcher",
+  "description": "In `capo/transport/dispatcher.py`, before normal turn processing: detect `approval_id` field on the inbound `AMCInboundEnvelope`. If present, parse the `choice` from the message text per §5.8 (exact option label match against the most recent pending approval in this thread), call `DBOS.send(approval_id, choice)`, then short-circuit (do NOT call `agent.run`). On ambiguous reply, ask a clarifying question.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] If envelope has `approval_id`: dispatcher routes to approval handler, NOT to `agent.run`.\n- [ ] Choice resolution: exact option-label match against the latest `pending` approval in the thread.\n- [ ] On ambiguous reply (no exact label match): send a clarifying AMC message listing the valid options.\n- [ ] After successful `DBOS.send`, `mark_read` the inbound message.\n\n_Edge Cases:_\n- [ ] No pending approval in this thread but envelope has `approval_id`: log warning, route to agent loop normally.\n- [ ] Multiple pending approvals (per §14 Q7 default soft cap of 1, but defensive): match against the most recent.\n\n**Testing Requirements:**\n• Unit: routing decision (approval vs agent) based on envelope shape\n• Integration: full approve cycle (outbound question → user reply → approval workflow resolved → action proceeds)\n\nSource: internal/specs/capo-SPEC.md Sections 5.8, 9.4, 14",
+  "activeForm": "Wiring approval inbound routing in dispatcher",
+  "status": "completed",
+  "blocks": [
+    "47"
+  ],
+  "blockedBy": [
+    "39",
+    "11"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Approval Flows",
+    "task_uid": "internal/specs/capo-SPEC.md:approval:inbound-routing:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows"
+  }
+}

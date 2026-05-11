@@ -1,0 +1,29 @@
+{
+  "id": "56",
+  "subject": "Implement /healthz endpoint with subsystem probes",
+  "description": "Build `capo/transport/health.py` — `GET /healthz` returns 200 with subsystem JSON on healthy, 503 if any required subsystem is down. Per §5.12 and §7.4.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Returns 200 with `{status, subsystems: {db, dbos, amc, dispatcher}, uptime_seconds, last_webhook_ts}` per §7.4.\n- [ ] Returns 503 with subsystem error detail on any required subsystem down (per §7.4 503 example).\n- [ ] Subsystem probes:\n  - `db`: `SELECT 1` against `state.db`.\n  - `dbos`: connection to `dbos.db` succeeds.\n  - `amc`: latest AMC ping or last successful send within configured staleness window (default 5 min).\n  - `dispatcher`: workers alive AND queue depth < `concurrency.queue_depth_max` (default 100 per channel worker).\n- [ ] No authentication (loopback-only listener).\n- [ ] Probe runtime < 200ms even when subsystems are degraded.\n\n_Edge Cases:_\n- [ ] Mid-restart probe: `dbos` may be initializing — return `degraded` (200) rather than 503 during the documented init window.\n\n**Testing Requirements:**\n• Integration: healthy boot → 200 with all subsystems \"ok\"\n• Integration: stop AMC → 503 with `amc: \"error: ...\"`\n• Unit: queue-depth probe edge at `queue_depth_max`\n\nSource: internal/specs/capo-SPEC.md Sections 5.12, 7.4, 9.5, 15.3",
+  "activeForm": "Implementing /healthz endpoint",
+  "status": "completed",
+  "blocks": [
+    "61",
+    "63"
+  ],
+  "blockedBy": [
+    "7",
+    "28",
+    "12",
+    "11",
+    "47"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Health Check Endpoint",
+    "task_uid": "internal/specs/capo-SPEC.md:health:endpoint:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

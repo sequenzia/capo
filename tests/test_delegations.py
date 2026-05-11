@@ -503,36 +503,90 @@ async def test_get_delegation_output_default_tail(
 
 
 # ---------------------------------------------------------------------------
-# kill_delegation (Phase 2 → ApprovalRequired)
+# kill_delegation (Task #44 — owner direct-kill / non-owner approval gating)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_kill_delegation_raises_approval_required(
+async def test_kill_delegation_owner_kills_directly(
     scaffold: tuple[Settings, Path], make_deps: Any
 ) -> None:
+    """Owner (delegations.user_id == requester) kills without approval."""
     _, db_path = scaffold
-    _insert_delegation(db_path, delegation_id="kill-me")
+    _insert_delegation(
+        db_path, delegation_id="own-kill", user_id="owner", pid=None
+    )
 
-    with pytest.raises(ApprovalRequired) as exc_info:
-        await kill_delegation(
-            _ctx(make_deps()), "kill-me", "user requested"
-        )
-
-    assert "kill-me" in exc_info.value.command
-    assert exc_info.value.reason == "user requested"
+    result = await kill_delegation(
+        _ctx(make_deps(user_id="owner")), "own-kill", "user requested"
+    )
+    assert result["status"] == "killed"
+    assert result["delegation_id"] == "own-kill"
+    assert result["reason"] == "user requested"
+    # No tied approvals → cascade returns 0.
+    assert result["cascaded_approvals"] == 0
+    row = _row(db_path, "own-kill")
+    assert row["status"] == "killed"
+    assert row["ended_at"] is not None
+    assert row["summary"] == "user requested"
 
 
 @pytest.mark.asyncio
-async def test_kill_delegation_does_not_touch_row(
+async def test_kill_delegation_already_terminal_is_noop(
     scaffold: tuple[Settings, Path], make_deps: Any
 ) -> None:
-    """ApprovalRequired in Phase 2 must NOT update the DB row."""
+    """Terminal row → no-op, no approval round-trip."""
     _, db_path = scaffold
-    _insert_delegation(db_path, delegation_id="untouched", status="running")
-    with pytest.raises(ApprovalRequired):
-        await kill_delegation(_ctx(make_deps()), "untouched", "x")
-    row = _row(db_path, "untouched")
+    _insert_delegation(
+        db_path,
+        delegation_id="terminal",
+        user_id="other",  # not the requester — proves no approval gate
+        status="completed",
+        ended_at=_utc_now_iso(),
+    )
+
+    result = await kill_delegation(
+        _ctx(make_deps(user_id="owner")), "terminal", "late kill"
+    )
+    assert result["status"] == "already_terminal"
+    assert result["prior_status"] == "completed"
+    # Row not modified.
+    row = _row(db_path, "terminal")
+    assert row["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_kill_delegation_unknown_id_raises(
+    scaffold: tuple[Settings, Path], make_deps: Any
+) -> None:
+    """Unknown delegation_id → DelegationNotFound (no approval call)."""
+    with pytest.raises(DelegationNotFound):
+        await kill_delegation(_ctx(make_deps()), "ghost", "x")
+
+
+@pytest.mark.asyncio
+async def test_kill_delegation_non_owner_falls_back_when_dbos_down(
+    scaffold: tuple[Settings, Path], make_deps: Any
+) -> None:
+    """Non-owner kill with DBOS not launched → ApprovalRequired fallback.
+
+    Mirrors the §5.8 ``shell_exec`` "DBOS-not-launched → ApprovalRequired"
+    contract from Task #42.
+    """
+    _, db_path = scaffold
+    _insert_delegation(
+        db_path, delegation_id="not-mine", user_id="other-user"
+    )
+
+    with pytest.raises(ApprovalRequired) as exc_info:
+        await kill_delegation(
+            _ctx(make_deps(user_id="owner")), "not-mine", "trying to kill"
+        )
+
+    assert "kill_delegation(not-mine)" in exc_info.value.command
+    assert "approval workflow is unavailable" in exc_info.value.reason
+    # Row untouched.
+    row = _row(db_path, "not-mine")
     assert row["status"] == "running"
     assert row["ended_at"] is None
 

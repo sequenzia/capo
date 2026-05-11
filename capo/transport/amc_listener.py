@@ -55,6 +55,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 
+from capo.observability import webhook_span
 from capo.transport.amc_client import AMCInboundEnvelope
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -273,14 +274,25 @@ def build_app(
 
         # (d) Dedupe. Same delivery-id within the TTL window → 204, NO enqueue.
         if dedupe.seen_and_record(delivery_id):
-            logger.info(
-                "amc_listener dedupe hit for delivery_id=%s",
-                delivery_id,
-                extra={
-                    "event": "capo.listener.dedupe.hit",
-                    "delivery_id": delivery_id,
-                },
-            )
+            # Emit a §6.5 ``capo.amc.webhook.in`` span even on dedupe so
+            # Logfire dashboards show the redelivery rate. ``channel_id``
+            # is intentionally None — we have NOT parsed the body, so we
+            # don't know it; the span attributes still satisfy the
+            # schema (channel_id is allowed-None per the constructor).
+            with webhook_span(
+                delivery_id=delivery_id,
+                channel_id=None,
+                signature_ok=True,
+                dedupe_hit=True,
+            ):
+                logger.info(
+                    "amc_listener dedupe hit for delivery_id=%s",
+                    delivery_id,
+                    extra={
+                        "event": "capo.listener.dedupe.hit",
+                        "delivery_id": delivery_id,
+                    },
+                )
             return Response(status_code=204)
 
         # (e) Parse the envelope. Malformed JSON or missing required fields:
@@ -337,60 +349,72 @@ def build_app(
         # would just snowball. We log structured detail and still 204; the
         # retry-window invariant means a true outage will surface via the
         # downstream worker, not via the handler latency budget.
-        try:
-            accepted = await dispatcher.enqueue(envelope)
-        except Exception as exc:  # noqa: BLE001 - intentional broad catch
-            logger.error(
-                "amc_listener dispatcher.enqueue raised for delivery_id=%s "
-                "channel_id=%s message_id=%s: %r",
+        #
+        # Spec §6.5: open the canonical ``capo.amc.webhook.in`` span at
+        # the dispatch boundary (signature already verified, envelope
+        # parsed, dedupe miss confirmed). Required attributes per §6.5
+        # are all known at this point.
+        with webhook_span(
+            delivery_id=delivery_id,
+            channel_id=envelope.channel_id,
+            signature_ok=True,
+            dedupe_hit=False,
+            message_id=envelope.id,
+        ):
+            try:
+                accepted = await dispatcher.enqueue(envelope)
+            except Exception as exc:  # noqa: BLE001 - intentional broad catch
+                logger.error(
+                    "amc_listener dispatcher.enqueue raised for delivery_id=%s "
+                    "channel_id=%s message_id=%s: %r",
+                    delivery_id,
+                    envelope.channel_id,
+                    envelope.id,
+                    exc,
+                    extra={
+                        "event": "capo.listener.enqueue.raised",
+                        "delivery_id": delivery_id,
+                        "channel_id": envelope.channel_id,
+                        "message_id": envelope.id,
+                        "error": repr(exc),
+                    },
+                )
+                return Response(status_code=204)
+
+            if not accepted:
+                # Queue full. AMC's retries are idempotent against our dedupe
+                # window — re-delivery of the same delivery-id will hit the
+                # dedupe LRU and 204 without re-enqueuing. Tasks #12 / #34 may
+                # later promote this to a 429 surface; Phase 1 documents the
+                # warning and ACKs.
+                logger.warning(
+                    "amc_listener dispatcher.enqueue returned False (queue full) "
+                    "for delivery_id=%s channel_id=%s message_id=%s",
+                    delivery_id,
+                    envelope.channel_id,
+                    envelope.id,
+                    extra={
+                        "event": "capo.listener.enqueue.full",
+                        "delivery_id": delivery_id,
+                        "channel_id": envelope.channel_id,
+                        "message_id": envelope.id,
+                    },
+                )
+                return Response(status_code=204)
+
+            logger.info(
+                "amc_listener accepted delivery_id=%s channel_id=%s message_id=%s",
                 delivery_id,
                 envelope.channel_id,
                 envelope.id,
-                exc,
                 extra={
-                    "event": "capo.listener.enqueue.raised",
-                    "delivery_id": delivery_id,
-                    "channel_id": envelope.channel_id,
-                    "message_id": envelope.id,
-                    "error": repr(exc),
-                },
-            )
-            return Response(status_code=204)
-
-        if not accepted:
-            # Queue full. AMC's retries are idempotent against our dedupe
-            # window — re-delivery of the same delivery-id will hit the
-            # dedupe LRU and 204 without re-enqueuing. Tasks #12 / #34 may
-            # later promote this to a 429 surface; Phase 1 documents the
-            # warning and ACKs.
-            logger.warning(
-                "amc_listener dispatcher.enqueue returned False (queue full) "
-                "for delivery_id=%s channel_id=%s message_id=%s",
-                delivery_id,
-                envelope.channel_id,
-                envelope.id,
-                extra={
-                    "event": "capo.listener.enqueue.full",
+                    "event": "capo.listener.accepted",
                     "delivery_id": delivery_id,
                     "channel_id": envelope.channel_id,
                     "message_id": envelope.id,
                 },
             )
             return Response(status_code=204)
-
-        logger.info(
-            "amc_listener accepted delivery_id=%s channel_id=%s message_id=%s",
-            delivery_id,
-            envelope.channel_id,
-            envelope.id,
-            extra={
-                "event": "capo.listener.accepted",
-                "delivery_id": delivery_id,
-                "channel_id": envelope.channel_id,
-                "message_id": envelope.id,
-            },
-        )
-        return Response(status_code=204)
 
     return app
 

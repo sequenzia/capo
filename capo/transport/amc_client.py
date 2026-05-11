@@ -47,6 +47,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
+from capo.observability import amc_send_span
+
 # ---------------------------------------------------------------------------
 # Constants — keep verbatim per §7.5 contract.
 # ---------------------------------------------------------------------------
@@ -477,12 +479,21 @@ class AMCClient:
             payload["reply_to"] = reply_to_message_id
         _ = approval  # Phase 4 — currently dropped at the AMC boundary.
         key = idempotency_key if idempotency_key is not None else str(uuid.uuid4())
-        body = await self._request(
-            method="POST",
-            path="/messages/send",
-            json_body=payload,
-            extra_headers={IDEMPOTENCY_HEADER: key},
-        )
+        # Spec §6.5: ``capo.amc.send`` — outbound AMC REST. Required
+        # attributes are ``channel_id`` and ``idempotency_key``;
+        # ``error_code`` defaults to None and would be populated on the
+        # live span by an AMCError handler (the no-op fallback CM ignores
+        # post-hoc updates).
+        with amc_send_span(
+            channel_id=channel_id,
+            idempotency_key=key,
+        ):
+            body = await self._request(
+                method="POST",
+                path="/messages/send",
+                json_body=payload,
+                extra_headers={IDEMPOTENCY_HEADER: key},
+            )
         return SendResult.model_validate(body)
 
     async def mark_read(self, message_ids: Iterable[str]) -> MarkReadResult:

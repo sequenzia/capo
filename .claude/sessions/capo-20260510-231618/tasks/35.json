@@ -1,0 +1,26 @@
+{
+  "id": "35",
+  "subject": "Replace Phase 2 in-process monitor with DBOS workflow handoff",
+  "description": "Update `capo/tools/claude_code.py` so that after `session_id_subagent` is captured, `delegate_to_claude_code` hands off to the `monitor_delegation` DBOS workflow instead of the Phase 2 asyncio task. Remove the Phase 2 in-process monitor.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `delegate_to_claude_code` returns the handle and starts `monitor_delegation` via `DBOS.start_workflow(monitor_delegation, delegation_id)` (or equivalent).\n- [ ] Phase 2 in-process asyncio monitor removed.\n- [ ] Reader continues to be owned by the workflow's `@DBOS.step` so its progress is checkpointed.\n- [ ] Backwards-compatibility: existing `delegations` rows from Phase 2 testing are migrated or recreated; not a concern for fresh deploys.\n\n_Edge Cases:_\n- [ ] Workflow start failure: row marked `failed`, subprocess killed, tool returns explicit error.\n\n**Testing Requirements:**\n• Integration: `delegate_to_claude_code` returns handle BEFORE workflow body runs\n• Integration: workflow takes ownership; status tool reports workflow-managed state\n• Integration: no leftover Phase 2 in-process tasks after handoff\n\nSource: internal/specs/capo-SPEC.md Sections 5.3, 5.6, 9.3",
+  "activeForm": "Replacing Phase 2 in-process monitor with DBOS",
+  "status": "completed",
+  "blocks": [
+    "36"
+  ],
+  "blockedBy": [
+    "30",
+    "22",
+    "23"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Tool — delegate_to_claude_code",
+    "task_uid": "internal/specs/capo-SPEC.md:cc:dbos-handoff:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume"
+  }
+}

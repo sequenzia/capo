@@ -1,0 +1,25 @@
+{
+  "id": "41",
+  "subject": "Implement /approve and /deny slash command parser (pre-agent)",
+  "description": "In `capo/transport/dispatcher.py`, before approval-id detection and before `agent.run`: parse `/approve <approval_id>` and `/deny <approval_id>` as unambiguous approval shortcuts. Same effect as a labeled-option reply: call `DBOS.send(approval_id, choice)` and mark read.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `/approve <id>` and `/deny <id>` parsed before agent loop.\n- [ ] Match is case-insensitive on the keyword, exact on the id.\n- [ ] If id doesn't match a `pending` approval: reply with \"approval id <id> not found or already resolved\".\n- [ ] Slash command consumes ZERO tokens (no agent.run).\n\n_Edge Cases:_\n- [ ] Whitespace before/after id tolerated.\n- [ ] User combines text + slash command: treat as slash command (text ignored for resolution).\n\n**Testing Requirements:**\n• Unit: parser matches `/approve <id>`, `/deny <id>`, both case-insensitively\n• Integration: `/approve <id>` resolves the approval workflow\n\nSource: internal/specs/capo-SPEC.md Sections 5.8, 5.10, 9.4",
+  "activeForm": "Implementing /approve and /deny slash parser",
+  "status": "completed",
+  "blocks": [
+    "47"
+  ],
+  "blockedBy": [
+    "39",
+    "11"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Approval Flows",
+    "task_uid": "internal/specs/capo-SPEC.md:approval:slash-commands:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows"
+  }
+}

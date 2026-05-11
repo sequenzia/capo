@@ -1,0 +1,31 @@
+{
+  "id": "37",
+  "subject": "Amend §5.4 and §7.5 with Codex spawn/event/resume contract from S-1",
+  "description": "**Phase 4 entry blocker (per §5.4 + §7.5).** After spike S-1 produces its findings, edit `internal/specs/capo-SPEC.md` §5.4 and §7.5 with the exact resolved Codex spawn invocation, event/output contract, resume mechanism, and fallback behavior if native resume is unavailable. Without this amendment, no Codex implementation tasks may begin.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] §5.4 acceptance criteria updated with the resolved Codex spawn argv (or workaround).\n- [ ] §7.5 \"Integration: Codex CLI\" section replaces \"Identical lifecycle; specifics finalized after spike S-1\" with the concrete spawn invocation, event-stream contract, and resume mechanism.\n- [ ] If S-1 found no native resume: §5.4 documents the workaround (e.g., re-issue brief with prior context) and the trade-offs.\n- [ ] Spec change log (§15.4) gets a new row noting the amendment.\n\n_Edge Cases:_\n- [ ] If S-1 yields a \"no path forward\" finding: open a decision question for the operator (e.g., drop Codex parity from V1) BEFORE this task can be completed.\n\n**Testing Requirements:**\n• Review: spec PR linked to this task; reviewer signs off the §5.4 + §7.5 changes are unambiguous.\n\nSource: internal/specs/capo-SPEC.md Sections 5.4, 7.5, 9.4",
+  "activeForm": "Amending spec with Codex spawn/resume contract",
+  "status": "completed",
+  "blocks": [
+    "45",
+    "46",
+    "47"
+  ],
+  "blockedBy": [
+    "4",
+    "36"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Tool — delegate_to_codex",
+    "task_uid": "internal/specs/capo-SPEC.md:codex:spec-amendment:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows",
+    "produces_for": [
+      "45",
+      "46"
+    ]
+  }
+}

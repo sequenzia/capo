@@ -1,0 +1,28 @@
+{
+  "id": "48",
+  "subject": "Implement cost accountant (Logfire reader / per-call accumulator)",
+  "description": "Build `capo/budget/accountant.py` — reads Logfire's per-run cost (or a custom per-call accumulator when Logfire is unavailable) and persists daily totals to `daily_costs(date, model, user_id, usd_total)`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `Accountant.record(model, usd, user_id)` updates `daily_costs` for `(today_local_date, model, user_id)`.\n- [ ] Daily totals are read efficiently for cap-check hot path.\n- [ ] Logfire is the canonical source; per-call accumulator is the fallback when Logfire is unreachable.\n- [ ] Per-delegation cost is logged on the `delegations.cost_usd` row but does NOT count against Capo's daily total in V1 (per §5.9 acceptance).\n- [ ] Nightly reconciliation step emits a `capo.budget.reconcile` Logfire span with `accumulator_usd`, `logfire_usd`, `drift_usd`.\n\n_Edge Cases:_\n- [ ] Resets at local midnight (per §5.9): timezone is local to the Mac mini.\n- [ ] Logfire unavailable mid-day: switch to accumulator; reconcile when Logfire returns.\n\n_Performance:_\n- [ ] Cap-check read path < 5ms (hot path called before every `agent.run` and `delegate_*`).\n\n**Testing Requirements:**\n• Unit: record + read flow\n• Unit: midnight reset\n• Integration: reconciliation span emitted with all three values\n\nSource: internal/specs/capo-SPEC.md Sections 5.9, 6.4, 6.5, 9.5",
+  "activeForm": "Implementing cost accountant",
+  "status": "completed",
+  "blocks": [
+    "49",
+    "63"
+  ],
+  "blockedBy": [
+    "47"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "M",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Cost Caps + Model Routing",
+    "task_uid": "internal/specs/capo-SPEC.md:budget:accountant:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish",
+    "produces_for": [
+      "49"
+    ]
+  }
+}

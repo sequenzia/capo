@@ -230,7 +230,7 @@ def build_agent(
     if register_tools and hasattr(agent, "tool"):
         # Local import keeps capo.tools out of the import graph for the
         # Settings-only "is the config valid" boot path.
-        from capo.tools import register_phase2_tools
+        from capo.tools import register_phase2_tools, register_phase5_tools
         from capo.tools.basic import register_basic_tools
 
         register_basic_tools(agent)
@@ -240,5 +240,10 @@ def build_agent(
         # double-call only happens once per agent instance — re-importing
         # ``capo.agent`` is safe.
         register_phase2_tools(agent)
+        # Phase-5 session-control NL tools (spec §5.10, §5.11):
+        # ``session_new`` / ``session_status`` / ``session_clear`` mirror
+        # the Task #52 slash commands so the LLM can invoke them when
+        # the user phrases the request in natural language.
+        register_phase5_tools(agent)
 
     return agent

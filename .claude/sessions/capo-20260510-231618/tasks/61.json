@@ -1,0 +1,26 @@
+{
+  "id": "61",
+  "subject": "Write operator runbook",
+  "description": "Write `docs/runbook.md` covering the §11.4 minimum operator scenarios.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Section: \"Capo isn't responding\" — check launchd status, check Logfire for last span, check AMC reachability.\n- [ ] Section: \"A delegation is hung\" — `/status`, then `get_delegation_output` tail, then `/kill` if needed.\n- [ ] Section: \"Cost cap fired unexpectedly\" — query `daily_costs`, check Logfire run costs, override via `override` reply.\n- [ ] Section: \"Restore state.db and dbos.db from Litestream\" — exact paired-restore commands + WAL handling.\n- [ ] Section: \"Replace a SOUL file\" — edit + restart.\n- [ ] Each section includes the exact commands to run (copy-pasteable).\n\n_Edge Cases:_\n- [ ] Document what to do when restore points for `state.db` and `dbos.db` are not perfectly aligned.\n\n**Testing Requirements:**\n• Review: operator follows the runbook in a dry-run incident drill (Phase 5 manual verification)\n\nSource: internal/specs/capo-SPEC.md Sections 9.5, 11.4",
+  "activeForm": "Writing operator runbook",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "57",
+    "58",
+    "56"
+  ],
+  "metadata": {
+    "priority": "medium",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Operator runbook",
+    "task_uid": "internal/specs/capo-SPEC.md:docs:runbook:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "57",
+  "subject": "Create Litestream config replicating state.db and dbos.db",
+  "description": "Write `scripts/litestream.yml` replicating `state.db` and `dbos.db` to a local folder + a private cloud bucket. Document paired-restore commands so the two files are always restored from the same backup point.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Litestream YAML covers both `state.db` and `dbos.db`.\n- [ ] At least two replicas per DB: one local (e.g. `~/Backups/capo`) and one cloud (e.g. S3).\n- [ ] Documented restore command pair restores BOTH files from the SAME timestamp/snapshot.\n- [ ] Runbook entry (separate task) references this config.\n\n_Edge Cases:_\n- [ ] Cloud bucket creds rotated: documented in runbook; restart Litestream sibling job.\n\n_Error Handling:_\n- [ ] Litestream can't write to a replica target: retries with backoff; operator alert on persistent failure.\n\n**Testing Requirements:**\n• Integration: restore exercise: restore paired `state.db` + `dbos.db` from the same backup point; full Phase 1–5 integration tests still pass (anchors §9.5 checkpoint row + §11.1 rollback)\n\nSource: internal/specs/capo-SPEC.md Sections 9.5, 11.1, 11.4, 13",
+  "activeForm": "Creating Litestream config",
+  "status": "completed",
+  "blocks": [
+    "61",
+    "63"
+  ],
+  "blockedBy": [
+    "47"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Litestream config",
+    "task_uid": "internal/specs/capo-SPEC.md:litestream:config:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

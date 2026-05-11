@@ -1,0 +1,33 @@
+{
+  "id": "29",
+  "subject": "Implement step idempotency framework",
+  "description": "Build `capo/workflows/_idempotency.py` — generator for stable idempotency keys derived from workflow + step + deterministic input, plus persistence helper that records keys in DBOS step state so retries are safe.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `idempotency_key(workflow_id, step_name, *deterministic_args) -> str` returns a stable key.\n- [ ] All `@DBOS.step` calls with external side effects (subprocess spawn, `amc.send`, any DB insert NOT already wrapped by the BEGIN IMMEDIATE retry helper) generate AND persist an idempotency key.\n- [ ] Persistence uses DBOS's step-state mechanism so a re-entered step skips work whose key already succeeded.\n- [ ] Helper provides a `@idempotent_step` decorator (or equivalent) that wraps a step body.\n\n_Edge Cases:_\n- [ ] Same key, different payload: re-using the same key with different content is rejected as a programmer error.\n- [ ] Workflow re-entry mid-step: persisted key prevents duplicate side effect.\n\n**Testing Requirements:**\n• Unit: same inputs produce identical key\n• Unit: different inputs produce distinct keys\n• Integration: workflow restart between key persist and side-effect re-entry: side effect runs at most once\n\nSource: internal/specs/capo-SPEC.md Sections 5.6, 5.13, 9.3",
+  "activeForm": "Implementing step idempotency framework",
+  "status": "completed",
+  "blocks": [
+    "30",
+    "33",
+    "34",
+    "36",
+    "39"
+  ],
+  "blockedBy": [
+    "28"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "DBOS Durable Monitoring",
+    "task_uid": "internal/specs/capo-SPEC.md:dbos:idempotency:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume",
+    "produces_for": [
+      "33",
+      "34",
+      "39"
+    ]
+  }
+}

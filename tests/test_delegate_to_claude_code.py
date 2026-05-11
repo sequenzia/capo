@@ -48,11 +48,15 @@ from pydantic_ai.usage import RunUsage
 from capo.config import Settings
 from capo.deps import CapoDeps
 from capo.memory.store import open_connection
-from capo.tools.basic import ApprovalRequired
 from capo.tools.claude_code import (
     ClaudeCodeBrief,
     DelegationHandle,
     delegate_to_claude_code,
+)
+from capo.workflows import destroy_dbos, init_dbos, is_launched, launch_dbos
+from capo.workflows.delegation import (
+    _DELEGATION_REGISTRY,
+    register_amc_sender,
 )
 
 # ---------------------------------------------------------------------------
@@ -167,6 +171,34 @@ CREATE TABLE IF NOT EXISTS delegation_output (
 )
 """
 
+# Mirrors migrations/versions/002_approvals.py + 003_approvals_request_types.py.
+# Tests that exercise the Task #43 approval gating need this table; tests
+# that don't are unaffected.
+_APPROVALS_DDL = """
+CREATE TABLE IF NOT EXISTS approvals (
+    approval_id       TEXT PRIMARY KEY,
+    requested_at      TEXT NOT NULL,
+    decided_at        TEXT,
+    request_type      TEXT NOT NULL CHECK (
+        request_type IN (
+            'shell_exec',
+            'delegate_out_of_root',
+            'delegate_dangerous_sandbox',
+            'kill_delegation'
+        )
+    ),
+    request_payload   TEXT NOT NULL,
+    requester_user_id TEXT,
+    parent_thread_id  TEXT,
+    status            TEXT NOT NULL CHECK (
+        status IN ('pending','approved','denied','expired','cancelled')
+    ),
+    resolved_by       TEXT,
+    reason            TEXT,
+    workflow_id       TEXT
+)
+"""
+
 
 def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -179,13 +211,37 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.fixture(autouse=True)
+def _ensure_clean_dbos_state():
+    """DBOS is a process-level singleton; teardown between tests so a
+    crash in test N doesn't poison test N+1.
+
+    Also clears the in-process delegation registry so we don't leak
+    DelegationProcessHandle entries from earlier tests in the same file.
+    """
+    import contextlib as _contextlib
+
+    with _contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    yield
+    with _contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    with _contextlib.suppress(Exception):
+        register_amc_sender(None)
+    if is_launched():
+        with _contextlib.suppress(Exception):
+            destroy_dbos()
+
+
 @pytest.fixture
 def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
     """Build a Settings rooted at ``tmp_path`` + the on-disk roots.
 
     Initializes ``state.db`` with the §7.3 ``delegations`` and
     ``delegation_output`` tables so tests can INSERT/SELECT without
-    bringing up Alembic.
+    bringing up Alembic. Also launches DBOS so
+    :func:`delegate_to_claude_code` can hand off to ``monitor_delegation``
+    per Task #35 (the new spawn-site contract).
     """
     projects_root = tmp_path / "projects"
     workspaces_root = tmp_path / "workspaces"
@@ -212,8 +268,13 @@ def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
     try:
         conn.execute(_DELEGATIONS_DDL)
         conn.execute(_DELEGATION_OUTPUT_DDL)
+        conn.execute(_APPROVALS_DDL)
     finally:
         conn.close()
+
+    # Launch DBOS so delegate_to_claude_code's Task #35 handoff succeeds.
+    init_dbos(settings)
+    launch_dbos()
 
     return settings, projects_root, workspaces_root
 
@@ -493,29 +554,120 @@ async def test_persistence_happens_before_handle_returns(
 
 
 @pytest.mark.asyncio
-async def test_repo_outside_projects_root_raises_approval(
+async def test_repo_outside_projects_root_denied_raises_rejected(
     tmp_path: Path,
     make_deps: Any,
     scaffold: tuple[Settings, Path, Path],
 ) -> None:
-    """A repo path outside ``projects_root`` triggers :class:`ApprovalRequired`."""
+    """A repo path outside ``projects_root`` routes through approval (Task #43).
+
+    Under the Task #43 wiring, ``delegate_to_claude_code`` no longer raises
+    :class:`ApprovalRequired` directly for out-of-``projects_root`` paths
+    — it now invokes the §5.8 approval workflow. Driving a ``/deny``
+    decision through DBOS resolves the workflow and yields
+    :class:`ApprovalRejected`.
+    """
+    from capo.tools._approval import ApprovalRejected
+    from capo.workflows.approval import APPROVAL_TOPIC, STATUS_DENIED
+
     deps = make_deps()
-    # Different tmp directory; not under projects_root.
+    settings, _, _ = scaffold
+
+    # Stub AMC so the notify step succeeds — local helper instead of
+    # bringing in the heavier AmcStub used in test_shell_exec_approval.
+    calls: list[dict[str, str]] = []
+
+    async def _stub_send(channel_id: str, text: str, idempotency_key: str):
+        calls.append(
+            {
+                "channel_id": channel_id,
+                "text": text,
+                "idempotency_key": idempotency_key,
+            }
+        )
+
+        class _Res:
+            message_id = "msg-out-of-root-deny"
+
+        return _Res()
+
+    register_amc_sender(_stub_send)
+
     outside = tmp_path / "elsewhere" / "repo"
     outside.mkdir(parents=True)
     brief = ClaudeCodeBrief(
         goal="g", repo_path=str(outside), create_worktree=False
     )
 
-    with pytest.raises(ApprovalRequired) as excinfo:
-        await delegate_to_claude_code(_ctx(deps), brief)
+    async def _denier() -> None:
+        from dbos import DBOS
 
-    assert "projects_root" in excinfo.value.reason
-    # And no row was written.
+        deadline = asyncio.get_event_loop().time() + 10.0
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(0.1)
+            if not calls:
+                continue
+            conn = sqlite3.connect(str(settings.paths.db_path))
+            try:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT approval_id, workflow_id, request_payload, "
+                    "request_type "
+                    "FROM approvals WHERE status='pending' "
+                    "ORDER BY requested_at DESC LIMIT 1"
+                ).fetchone()
+            finally:
+                conn.close()
+            if row is None or row["workflow_id"] is None:
+                continue
+            await DBOS.send_async(
+                row["workflow_id"],
+                {"status": "deny", "resolved_by": "user-42", "reason": "no"},
+                APPROVAL_TOPIC,
+            )
+            return
+        raise AssertionError("denier did not observe a pending row")
+
+    import contextlib as _contextlib
+
+    denier_task = asyncio.create_task(_denier())
+    try:
+        with pytest.raises(ApprovalRejected) as excinfo:
+            await delegate_to_claude_code(_ctx(deps), brief)
+    finally:
+        with _contextlib.suppress(Exception):
+            await denier_task
+
+    assert excinfo.value.status == STATUS_DENIED
+
+    # And no delegation row was written.
     rows = _rows(scaffold[0].paths.db_path)
     assert rows == []
     # And no workspace dir was created.
     assert list((scaffold[0].paths.workspaces_root).iterdir()) == []
+
+    # Approval row records the §5.8 contract.
+    conn = sqlite3.connect(str(settings.paths.db_path))
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM approvals WHERE status='denied' LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    assert row["request_type"] == "delegate_out_of_root"
+    # request_payload carries the brief summary — repo_path, model, mode,
+    # prompt_hash — NOT the raw prompt.
+    payload = json.loads(row["request_payload"])
+    assert payload["agent"] == "claude-code"
+    assert payload["repo_path"] == str(outside)
+    assert "prompt_hash" in payload
+    assert isinstance(payload["prompt_hash"], str)
+    assert len(payload["prompt_hash"]) == 16
+    assert "prompt" not in payload, (
+        "raw prompt must not be in approval payload"
+    )
 
 
 # ---------------------------------------------------------------------------

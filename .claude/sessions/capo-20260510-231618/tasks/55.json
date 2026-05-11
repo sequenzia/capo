@@ -1,0 +1,25 @@
+{
+  "id": "55",
+  "subject": "Implement nightly delegation_output retention pruning",
+  "description": "Build `capo/memory/retention.py` — nightly job that deletes `delegation_output` chunks older than `retention.delegation_output_days` (default 7d) and runs `wal_checkpoint(TRUNCATE)` to reclaim WAL space.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Job scheduled to run once per day (e.g., at local 03:00).\n- [ ] Deletes from `delegation_output` where `ts < NOW() - retention.delegation_output_days`.\n- [ ] After delete, runs `PRAGMA wal_checkpoint(TRUNCATE)` against `state.db`.\n- [ ] Job is single-instance (no overlapping runs).\n- [ ] Holds DB size growth < 100 MB/week with default retention (per §6.1).\n\n_Edge Cases:_\n- [ ] Retention job interrupted mid-run by Capo restart: next run picks up where it left off (idempotent delete).\n- [ ] Delegation older than retention but still `running`: chunks are pruned only after delegation reaches a terminal state (or chunks are explicitly preserved while running — choose preserve).\n\n**Testing Requirements:**\n• Integration: insert chunks dated > retention; run job; assert deletion + WAL truncation\n• Integration: chunks for `running` delegations preserved\n\nSource: internal/specs/capo-SPEC.md Sections 6.1, 9.5, 15.3",
+  "activeForm": "Implementing nightly delegation_output pruning",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "7",
+    "47"
+  ],
+  "metadata": {
+    "priority": "medium",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Output retention pruning",
+    "task_uid": "internal/specs/capo-SPEC.md:retention:nightly:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

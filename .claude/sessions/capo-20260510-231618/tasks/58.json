@@ -1,0 +1,25 @@
+{
+  "id": "58",
+  "subject": "Create launchd plist (com.you.capo.plist) with KeepAlive and explicit PATH",
+  "description": "Write `scripts/com.you.capo.plist` per §13 mitigation and blueprint expectations. `KeepAlive` true, `RunAtLoad` true, App Nap disabled, explicit `PATH` including Homebrew (`/opt/homebrew/bin`) and the venv bin directory.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Plist runs `python -m capo` (or equivalent) with the venv interpreter.\n- [ ] `EnvironmentVariables` includes explicit `PATH` covering Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`) and venv bin so `claude` and `codex` are findable.\n- [ ] `KeepAlive` true → restart on crash; `RunAtLoad` true.\n- [ ] App Nap disabled (`ProcessType = Interactive`, or `LimitLoadToSessionType` as appropriate).\n- [ ] Stdout/stderr to a log file under `~/Library/Logs/capo/`.\n- [ ] Boot crash → restart < 5s (per §6.4 reliability target).\n\n_Edge Cases:_\n- [ ] Apple Silicon vs Intel: comment notes the Homebrew path differences and how to adjust.\n\n**Testing Requirements:**\n• Manual: `launchctl load` and `launchctl unload` cleanly cycle the process\n• Manual: kill the process; verify it restarts < 5s\n\nSource: internal/specs/capo-SPEC.md Sections 6.4, 9.5, 11.1, 13",
+  "activeForm": "Creating launchd plist",
+  "status": "completed",
+  "blocks": [
+    "61",
+    "63"
+  ],
+  "blockedBy": [
+    "47"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "launchd plist",
+    "task_uid": "internal/specs/capo-SPEC.md:launchd:plist:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

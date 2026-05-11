@@ -1,0 +1,36 @@
+{
+  "id": "63",
+  "subject": "Phase 5 checkpoint: cost caps, observability, Litestream restore exercise",
+  "description": "Execute the Phase 5 checkpoint gate per §9.5. This is also the V1 release gate.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] All Phase 5 tests pass.\n- [ ] Integration test: synthetic cost accumulation crosses soft cap → model swap verified; crosses hard cap → override flow verified.\n- [ ] Logfire dashboard shows all taxonomy spans (per §6.5) for a representative end-to-end run.\n- [ ] Slash commands route in zero-token paths; NL fallback works.\n- [ ] Compaction triggers at configured token threshold, retains all active delegation handles, replaces older messages with a summary.\n- [ ] Retention pruning empties old chunks and reclaims WAL space on schedule.\n- [ ] `GET /healthz` returns 200 with all subsystems \"ok\" on a healthy boot.\n- [ ] `launchd` plist boots Capo cleanly on Mac mini reboot.\n- [ ] Litestream restore exercise: restore paired `state.db` + `dbos.db` from the same backup point; integration tests still pass.\n- [ ] Spec checklist for §5.9, §5.10, §5.12, §5.13 (final notification), §6.5 signed off in `internal/specs/capo-SPEC.md` change log.\n\n_Performance:_\n- [ ] Daily cost cap accuracy: within ±$1 of Logfire-reported actual (per §6.4) — verified via `capo.budget.reconcile` span.\n\n_Functional (V1 release):_\n- [ ] Lines of Python (excl. tests) < ~800 LOC at Phase 5 close (`tokei capo/`).\n\n**Testing Requirements:**\n• Integration: soft + hard cap flow\n• Integration: span coverage check\n• Integration: end-to-end Litestream restore + replay\n• Performance: 1000 webhooks at 5 rps (P99 < 1s) — re-verifies §6.1\n• Performance: 100 MB stdout in 60s — re-verifies §6.1\n• Performance: compaction < 5s on 110K-token history — verifies §10.3\n\nSource: internal/specs/capo-SPEC.md Section 9.5 (Checkpoint Gate)",
+  "activeForm": "Running Phase 5 checkpoint",
+  "status": "completed",
+  "blocks": [],
+  "blockedBy": [
+    "48",
+    "49",
+    "50",
+    "51",
+    "52",
+    "53",
+    "54",
+    "55",
+    "56",
+    "57",
+    "58",
+    "59",
+    "60",
+    "61",
+    "62"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Phase 5 Checkpoint",
+    "task_uid": "internal/specs/capo-SPEC.md:phase-5:checkpoint:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

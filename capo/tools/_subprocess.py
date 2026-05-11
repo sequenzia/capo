@@ -145,15 +145,18 @@ class ReaderHandle:
     The handle aggregates the per-stream reader tasks into a single object
     callers can ``await`` (via :meth:`wait`) or cancel (via :meth:`cancel`).
 
-    Session-id capture hook (Task #23)
-    ----------------------------------
-    The reader exposes two attributes consumed by
-    :func:`capo.tools.claude_code._await_session_id`:
+    Session-id capture hook (Task #23 / Task #45)
+    ---------------------------------------------
+    The reader exposes two attributes consumed by per-agent
+    ``_await_session_id`` helpers (in :mod:`capo.tools.claude_code` and
+    :mod:`capo.tools.codex`):
 
     * :attr:`first_event_received` — an :class:`asyncio.Event` that is set the
       first time the reader observes a JSON-parseable stdout line whose
-      top-level ``session_id`` field is a non-empty string (the canonical
-      field path per spike S-3 §4.1).
+      top-level ``session_id`` field is a non-empty string (Claude Code,
+      per spike S-3 §4.1) OR whose top-level ``thread_id`` field is a
+      non-empty string (Codex's ``thread.started`` event, per spike
+      S-1 §5).
     * :attr:`first_event` — the parsed event dict that triggered the event
       above (or ``None`` until that happens).
 
@@ -560,20 +563,36 @@ async def _emit_chunk(
                 # tests are deterministic.
                 chosen_stream = "event"
                 chunk_text = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
-                # Task #23 — session-id capture hook. Per spike S-3 §4.1 the
-                # canonical field path is the top-level ``session_id`` string
-                # on every event. We expose the first such event verbatim so
-                # `_await_session_id` in claude_code.py can extract it +
-                # UPDATE the delegations row via the retry helper. Malformed
-                # events (no session_id, or session_id not a non-empty str)
-                # are ignored — the parser keeps looking.
+                # Task #23 / Task #45 — session-id capture hook.
+                #
+                # Per spike S-3 §4.1, the canonical Claude Code session
+                # token is the top-level ``session_id`` string on every
+                # CC event. Per spike S-1 §5, the canonical Codex session
+                # token is the top-level ``thread_id`` UUID emitted on
+                # the first ``type == "thread.started"`` event. Both are
+                # consumed by the per-agent ``_await_session_id`` helper
+                # (one in :mod:`capo.tools.claude_code`, one in
+                # :mod:`capo.tools.codex`) which extracts the right field
+                # from :attr:`ReaderHandle.first_event` and UPDATEs the
+                # delegations row via the retry helper.
+                #
+                # The trigger is "first JSON event that carries EITHER a
+                # non-empty top-level ``session_id`` OR a non-empty
+                # top-level ``thread_id``". Malformed events lacking both
+                # are ignored — the parser keeps looking. This stays
+                # backwards-compatible with the Phase 2 CC capture path
+                # (CC events always have ``session_id``; Codex events
+                # never do until ``thread.started``).
                 if (
                     handle is not None
                     and not handle.first_event_received.is_set()
                     and isinstance(parsed, dict)
                 ):
                     sid = parsed.get("session_id")
-                    if isinstance(sid, str) and sid:
+                    tid = parsed.get("thread_id")
+                    has_sid = isinstance(sid, str) and sid
+                    has_tid = isinstance(tid, str) and tid
+                    if has_sid or has_tid:
                         handle.first_event = parsed
                         handle.first_event_received.set()
                 del parsed  # explicit, mirrors local in-band JSON consumers

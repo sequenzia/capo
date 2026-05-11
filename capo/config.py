@@ -216,15 +216,38 @@ class ConcurrencyConfig(_StrictModel):
 
 
 class RetentionConfig(_StrictModel):
-    """``[retention]`` — how long to keep delegation output rows."""
+    """``[retention]`` — how long to keep delegation output rows.
 
-    delegation_output_days: int = Field(ge=0)
+    Task #55 (§8.1, §8.4): a nightly maintenance job prunes
+    ``delegation_output`` rows older than ``delegation_output_days`` whose
+    parent delegation is in a terminal state. ``run_hour_local`` controls
+    the wake time (24h clock, local TZ); ``vacuum_after_prune`` is an
+    opt-in ``VACUUM`` after each successful prune.
+    """
+
+    delegation_output_days: int = Field(default=14, ge=0)
+    run_hour_local: int = Field(default=3, ge=0, le=23)
+    vacuum_after_prune: bool = False
 
 
 class CompactionConfig(_StrictModel):
-    """``[compaction]`` — conversation compaction thresholds."""
+    """``[compaction]`` — conversation compaction thresholds (spec §5.7, §15.3).
 
-    threshold_tokens: int = Field(ge=0)
+    Hybrid compaction (Task #54): when a thread's history grows past either
+    threshold (``threshold_messages`` or ``threshold_tokens``, whichever fires
+    first), the oldest messages are replaced with a single LLM-generated
+    summary while the last ``keep_recent_messages`` are preserved verbatim.
+
+    Backward compatibility: the original spec §15.3 schema only had
+    ``threshold_tokens`` (default 100,000) + ``preserve_delegation_handles``.
+    Task #54 introduces ``threshold_messages``, ``keep_recent_messages``, and
+    ``enabled`` with defaults so existing TOML configs remain valid.
+    """
+
+    threshold_tokens: int = Field(default=50_000, ge=0)
+    threshold_messages: int = Field(default=30, ge=1)
+    keep_recent_messages: int = Field(default=10, ge=1)
+    enabled: bool = True
     preserve_delegation_handles: bool = True
 
 
@@ -338,9 +361,36 @@ class UsersConfig(BaseModel):
 
 
 class ObservabilityConfig(_StrictModel):
-    """``[observability]`` — Logfire toggles (spec §6.5)."""
+    """``[observability]`` — Logfire toggles (spec §6.5).
+
+    Phase 5 (Task #50) extends this block with Logfire wiring fields. All
+    fields are optional with sensible defaults so existing config files
+    that only set ``logfire_enabled = true`` continue to load unchanged.
+
+    Token precedence (resolved at ``configure_logfire`` time, not here):
+      1. ``observability.token`` from TOML/.env (this field, when set).
+      2. ``LOGFIRE_TOKEN`` from the process environment.
+      3. None — Logfire is skipped silently if ``LOGFIRE_IGNORE_NO_CONFIG=1``
+         is also set, otherwise Logfire's own credentials-file lookup runs.
+    """
 
     logfire_enabled: bool = True
+    token: SecretStr | None = None
+    service_name: str = "capo"
+    environment: str = "dev"
+
+
+class BootConfig(_StrictModel):
+    """``[boot]`` — boot-time pre-flight knobs (spec §5.4, §7.5, §12.1).
+
+    Task #62: gate the binary version pre-checks. ``skip_binary_precheck``
+    is intentionally off-by-default; flipping it true is the documented
+    escape hatch for smoke tests / CI runs that don't ship ``claude`` or
+    ``codex`` binaries on the executor. When skipped the boot path logs an
+    informational event and proceeds (no version assertion).
+    """
+
+    skip_binary_precheck: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +421,11 @@ class Settings(BaseSettings):
     heartbeat: HeartbeatConfig
     users: UsersConfig
     observability: ObservabilityConfig
+    # Task #62: ``[boot]`` is optional in config.toml — defaults give the
+    # production behavior (precheck enabled) so existing config files load
+    # unchanged. Set ``boot.skip_binary_precheck = true`` for smoke/CI runs
+    # without the claude/codex CLIs.
+    boot: BootConfig = Field(default_factory=BootConfig)
 
     # .env-sourced secrets. Names match the environment variables verbatim.
     amc_webhook_secret: SecretStr = Field(alias="AMC_WEBHOOK_SECRET")
@@ -526,6 +581,7 @@ class Settings(BaseSettings):
             "heartbeat": raw.get("heartbeat", {}),
             "users": raw.get("users", {}),
             "observability": raw.get("observability", {}),
+            "boot": raw.get("boot", {}),
             "AMC_WEBHOOK_SECRET": env_map[required_secret],
             "AMC_BEARER_TOKEN": env_map["AMC_BEARER_TOKEN"],
         }
@@ -575,6 +631,7 @@ class Settings(BaseSettings):
             "heartbeat",
             "users",
             "observability",
+            "boot",
         }
         for key in raw:
             if key not in known:

@@ -296,13 +296,16 @@ flowchart LR
 - [ ] Same lifecycle as CC: persist row → spawn → register DBOS workflow → return handle.
 - [ ] `check_delegation_status`, `get_delegation_output`, `kill_delegation` work for Codex delegations identically.
 - [ ] DBOS monitor uses the same `monitor_delegation` workflow, dispatching to a per-agent reader strategy (CC reads `--output-format stream-json` events; Codex reads `codex exec --json` JSONL events — see §7.5 "Integration: Codex CLI" and spike S-1).
-- [ ] Codex resume mechanism mirrors CC's `--resume <session_id>` contract. **S-1 (2026-05-10) confirmed native resume is supported via `codex exec resume <session_id>`; no workaround needed.** See §7.5 for the exact spawn + resume invocations.
+- [ ] **Spawn argv (initial delegation)**: `codex exec --json --skip-git-repo-check --sandbox <mode> -C <brief.repo_path> "<rendered_brief>"` (with optional `--model <brief.model>` / `--add-dir <dir>` / `-c <key>=<value>`). See §7.5 "Integration: Codex CLI" for the canonical form and field-by-field semantics.
+- [ ] **Resume argv (on DBOS workflow re-entry)**: `codex exec resume --json --skip-git-repo-check [--model <brief.model>] <thread_id> "<continuation_prompt>"`. Capo's resume code path MUST omit `--sandbox`, `--ask-for-approval`, `-C/--cd`, and `--add-dir` (those flags error on `codex exec resume`; sandbox + working-root are inherited from the original rollout). S-1 (2026-05-11) confirmed native resume is supported via `codex exec resume <thread_id>`; no workaround needed.
 - [ ] **Phase 4 entry criterion (resolved).** Spike S-1 has amended §5.4 and §7.5 with the exact spawn invocation, event/output contract, and native resume mechanism. Phase 4 implementation tasks may now be created.
 - [ ] Capo MUST NOT pass `--ephemeral` for Codex delegations (it disables rollout persistence, breaking resume).
 - [ ] Capo MUST pin `codex>=0.130.0` (the version validated by S-1); re-run S-1 on minor-version bumps before promoting.
-- [ ] Capo's resume code path MUST omit `--sandbox`, `--ask-for-approval`, `-C/--cd`, and `--add-dir` (those flags error on `codex exec resume`; sandbox + working-root are inherited from the original rollout).
+- [ ] `codex exec resume` is single-threaded per `thread_id` — Capo MUST serialize resume calls per delegation row (enforced by the dispatcher's per-channel mutex + the delegation row's `status=running` guard). See §7.5 "Integration: Codex CLI" → "Concurrency".
 
-> _Updated by spike S-1 on 2026-05-10._
+> _Updated by spike S-1 on 2026-05-11._
+
+> _Updated by Phase 4 checkpoint on 2026-05-11._ Codex tool-surface parity contract validated end-to-end by `tests/test_phase4_checkpoint.py::test_codex_delegation_dbos_handoff_to_terminal_and_notify` (initial `codex exec` spawn → DBOS handoff → terminal completion → exactly-one `notify_user`) and `tests/test_phase4_checkpoint.py::test_codex_restart_resume_completes_and_notifies_once` (compressed restart-resume via `codex exec resume <thread_id>` with forbidden-flag invariants enforced). The unmodified wall-clock variants live in `internal/specs/spikes/S-6-phase4-checkpoint.md` §6-7 (operator runbook against real Codex CLI ≥ 0.130.0).
 
 ---
 
@@ -326,6 +329,8 @@ flowchart LR
 ---
 
 ### 5.6 Feature: DBOS Durable Monitoring + Restart Resume
+
+> _Updated by Phase 3 checkpoint on 2026-05-11._ Contract validated end-to-end by `tests/test_phase3_checkpoint.py` (compressed restart-resume equivalent + idempotent-notify edge case + 3-concurrent delegations) plus the unmodified 90-minute operator runbook documented in `internal/specs/spikes/S-5-phase3-checkpoint.md`.
 
 **Priority**: P0 (Critical)
 **Complexity**: High
@@ -416,6 +421,8 @@ Capo must parse approval replies from natural-language messages by matching eith
 
 If ambiguous, ask a clarifying question.
 
+> _Updated by Phase 4 checkpoint on 2026-05-11._ Approval-flow contract validated end-to-end by `tests/test_phase4_checkpoint.py`: row 1 (`test_approval_round_trip_executes_and_idempotent_delivery` — `/approve` round-trip + `Idempotency-Key` dedupe), row 2 (`test_approval_deny_raises_approval_rejected` — `/deny` raises `ApprovalRejected`), row 3 (`test_approval_timeout_raises_expired` — 2-second compressed timeout transitions row to `status='expired'`), and row 6 (`test_kill_cascade_resolves_tied_pending_approval` — external `force_resolve_approval` walks pending approvals tied by `request_payload.delegation_id`). The 30-minute / 24-hour wall-clock timeout variant is documented in `internal/specs/spikes/S-6-phase4-checkpoint.md` §5 (operator runbook).
+
 ---
 
 ### 5.9 Feature: Cost Caps + Model Routing
@@ -423,6 +430,10 @@ If ambiguous, ask a clarifying question.
 **Priority**: P1 (High)
 **Complexity**: Medium
 **Phase**: 5
+
+> _Updated by Phase 4 checkpoint on 2026-05-11._ Subagent model routing (the per-delegation `model` field on `CodexBrief` / `ClaudeCodeBrief`) is exercised end-to-end by `tests/test_phase4_checkpoint.py::test_codex_delegation_dbos_handoff_to_terminal_and_notify` (`brief.model="openai:gpt-5"` round-trips through `delegations.model` and the codex spawn argv) and preserved on resume by `tests/test_phase4_checkpoint.py::test_codex_restart_resume_completes_and_notifies_once`. The remaining §5.9 acceptance criteria (soft/hard caps, daily totals, `override`/`/override` parsing, Logfire reconciliation) ship in Phase 5 and remain pending sign-off.
+>
+> _Updated by Phase 5 checkpoint on 2026-05-11._ Cost-cap state machine (soft warn / hard block / overridden) is validated end-to-end through the live `Dispatcher` by `tests/test_phase5_checkpoint.py::test_cost_cap_hard_block_override_and_soft_warn` — spending past `[budget].hard_daily_usd` blocks the turn with the §5.9-mandated refusal message, `/override` arms the per-thread single-turn sentinel that the budget hook consumes on the next hard-block check, and a soft-only crossing prepends the heads-up to the agent reply. Cost accountant (`capo/costs.py`) ingests Pydantic AI `RequestUsage` per-`ModelResponse` and persists Decimal-quantized totals into `costs`. The pre-agent hook (`capo/budget.py::check_budget`) is fail-open on accountant errors. The Logfire reconciliation acceptance row remains a documented future enhancement.
 
 #### User Story
 
@@ -448,6 +459,10 @@ If ambiguous, ask a clarifying question.
 **Complexity**: Low
 **Phase**: 5
 
+> _Updated by Phase 4 checkpoint on 2026-05-11._ The Phase 4 slice of §5.10 — `/approve <id>` and `/deny <id>` pre-agent parsing + `kill_delegation` approval gating with cascade-cancel of tied pending approvals — is validated end-to-end by `tests/test_phase4_checkpoint.py::test_approval_round_trip_executes_and_idempotent_delivery`, `tests/test_phase4_checkpoint.py::test_approval_deny_raises_approval_rejected`, and `tests/test_phase4_checkpoint.py::test_kill_cascade_resolves_tied_pending_approval` (`/kill` cascade resolves tied approvals to `status='cancelled'` via `force_resolve_approval`). The remaining §5.10 slash commands (`/new`, `/status`, `/clear`, `/override`) ship in Phase 5 and remain pending sign-off.
+>
+> _Updated by Phase 5 checkpoint on 2026-05-11._ The full §5.10 slash-command surface (`/new`, `/status`, `/clear`, `/kill`, `/override`, `/approve`, `/deny`) is finalized: the dispatcher pre-agent intercept consumes zero LLM tokens, writes the equivalent action result via `amc.send`, and routes `/override` to the per-thread `ChannelWorker` sentinel consumed by the Task #49 budget hook. End-to-end coverage in `tests/test_dispatcher_session_commands.py` (Task #52) + `tests/test_phase5_checkpoint.py::test_slash_override_arms_sentinel_zero_agent_calls`. The NL-tool fallback (`session_new`, `session_status`, `session_clear` registered as agent tools) ships in Task #53 and is covered by `tests/test_session_tools.py`.
+
 #### User Story
 
 **US-010**: As the user, I want zero-cost shortcuts for common control actions (new session, status, kill, clear) plus a natural-language fallback.
@@ -472,6 +487,8 @@ If ambiguous, ask a clarifying question.
 **Complexity**: Low
 **Phase**: 1
 
+> _Updated by Phase 5 checkpoint on 2026-05-11._ Multi-user partitioning is exercised end-to-end across every Phase-5 surface: `user_id`-scoped daily cost totals in `capo/costs.py::daily_total_usd`, `user_id`-scoped session lookup in `capo/tools/session.py`, and `user_id`-scoped budget hook + override sentinel in `capo/budget.py` + `ChannelWorker._cost_overrides`. The single-mapping V1 contract (`config.toml [users.<id>] amc_senders=[...]`) is re-asserted by `tests/test_phase5_checkpoint.py` running under the standard test TOML with `owner` mapped to `+15551234567`.
+
 #### User Story
 
 **US-011**: As the future small-group operator, I want every record partitioned by `user_id` so adding 2-3 more people is a config edit, not a refactor.
@@ -491,6 +508,8 @@ If ambiguous, ask a clarifying question.
 **Priority**: P1 (High)
 **Complexity**: Low
 **Phase**: 5
+
+> _Updated by Phase 5 checkpoint on 2026-05-11._ `GET /healthz` ships per Task #56 in `capo/transport/health.py` with 7 probes (`state_db`, `dbos_db`, `dbos_launched`, `amc_reachable`, `logfire_configured`, `claude_binary`, `codex_binary`). Critical set = `{state_db, dbos_db, dbos_launched}`. The §5.12 acceptance contract — 200 with all probes passing, 503 when DBOS is not launched — is validated by `tests/test_phase5_checkpoint.py::test_healthz_200_when_all_critical_pass_and_503_when_dbos_down`. The endpoint never raises; per-probe timeout is 2s; overall budget is 5s. Wall-clock launchd-supervised variant documented in `internal/specs/spikes/S-7-phase5-checkpoint.md` §4.
 
 #### User Story
 
@@ -522,6 +541,8 @@ If ambiguous, ask a clarifying question.
 ---
 
 ### 5.13 Feature: Live Progress Reporting
+
+> _Updated by Phase 3 checkpoint on 2026-05-11._ Heartbeat contract validated by `tests/test_workflows_heartbeat.py` (per-threshold idempotency, frozen wall-clock anchor) and re-asserted under restart-resume by `tests/test_phase3_checkpoint.py`. The unmodified 90-minute operator runbook (`internal/specs/spikes/S-5-phase3-checkpoint.md` §4) covers the wall-clock-threshold-crossing variant.
 
 **Priority**: P2 (Medium)
 **Complexity**: Low
@@ -587,6 +608,8 @@ If ambiguous, ask a clarifying question.
 | Cost cap accuracy | Daily totals within ±$1 of Logfire-reported actual |
 
 ### 6.5 Observability Requirements
+
+> _Updated by Phase 5 checkpoint on 2026-05-11._ Logfire instrumentation (Task #50) lands in `capo/observability.py::configure_logfire` with `instrument_httpx`/`instrument_pydantic_ai`/`instrument_fastapi(app)` hooks; configure is fail-tolerant so a bad token never wedges boot. Named span constructors in `capo/observability.py` (Task #51) enforce the canonical §6.5 taxonomy (`capo.amc.webhook.in`, `capo.dispatcher.envelope`, `capo.agent.run`, `capo.workflow.delegation.monitor`, `capo.workflow.approval.request`, etc.); the audit in `tests/test_span_taxonomy.py` rejects raw `with_span(`/`logfire.span(` calls inside `capo/`. The Logfire alerts catalogue (Task #60) lives at `internal/ops/logfire-alerts.yml` (9 alerts including delegation failure rate, AMC `send` 5xx rate, webhook signature failures, daily cost approaching soft cap, DBOS workflow failures, listener P99 latency). Reconciliation between accountant + Logfire is documented as a future enhancement (§5.9).
 
 #### Logfire Span Taxonomy (Normative)
 
@@ -1140,7 +1163,7 @@ Resume failures (e.g., unknown session id) emit a plain-text error line followed
 
 #### Integration: Codex CLI
 
-Identical lifecycle to Claude Code. Spike S-1 (2026-05-10) validated `codex-cli v0.130.0` end-to-end and produced the contract below. **Capo MUST pin `codex>=0.130.0`** and re-run S-1 on minor-version bumps.
+Identical lifecycle to Claude Code. Spike S-1 (2026-05-11) validated `codex-cli v0.130.0` end-to-end and produced the contract below. **Capo MUST pin `codex>=0.130.0`** and re-run S-1 on minor-version bumps.
 
 **Spawn invocation** (initial delegation):
 ```bash
@@ -1208,7 +1231,9 @@ Notes:
 
 For the full spike details and sample artifacts see `internal/specs/spikes/S-1-codex-resume.md` and `internal/specs/spikes/S-1-samples/`.
 
-> _Updated by spike S-1 on 2026-05-10._
+> _Updated by spike S-1 on 2026-05-11._
+
+> _Updated by Phase 4 checkpoint on 2026-05-11._ §7.5 integration contracts validated end-to-end by `tests/test_phase4_checkpoint.py`: the Codex spawn argv (`codex exec --json --skip-git-repo-check --sandbox <mode> -C <workspace> "<prompt>"`, never `--ephemeral`) is asserted by `test_codex_delegation_dbos_handoff_to_terminal_and_notify`; the Codex resume argv (`codex exec resume --json --skip-git-repo-check [--model <m>] <thread_id> "<continuation>"`, no `--sandbox`/`--ask-for-approval`/`-C`/`--cd`/`--add-dir`) by `test_codex_restart_resume_completes_and_notifies_once`; and the AMC `Idempotency-Key` HTTP-header contract (server-side dedupe by `notify_user:<32hex>` and `notify_approval:<32hex>`) by both approval-flow tests (`test_approval_round_trip_executes_and_idempotent_delivery`, `test_approval_deny_raises_approval_rejected`). The full wall-clock variants live in `internal/specs/spikes/S-6-phase4-checkpoint.md`.
 
 ### 7.6 Technical Constraints
 
@@ -1227,6 +1252,8 @@ For the full spike details and sample artifacts see `internal/specs/spikes/S-1-c
 ## 8. Scope Definition
 
 ### 8.1 In Scope (V1, all phases)
+
+> _Updated by Phase 5 checkpoint on 2026-05-11._ Ops surface complete: Litestream config (Task #57) ships at `internal/ops/litestream.yml` (paired `state.db` + `dbos.db` replication, 1s sync, 24h/168h tiered snapshot compaction, Prometheus on 127.0.0.1:9091); launchd plist (Task #58) ships at `internal/ops/com.you.capo.plist` with `KeepAlive={SuccessfulExit=false}`, `RunAtLoad=true`, `ThrottleInterval=10`, and PATH covering Apple Silicon + Intel Homebrew; `caffeinate` helper (Task #59) ships at `capo/caffeinate.py` with refcount-by-set + asyncio.Lock serialization + SIGTERM-then-SIGKILL reap (macOS-only, no-op elsewhere). Boot-time CLI version pre-checks (Task #62) in `capo/boot.py` fast-fail when `claude --version < 2.1.138` or `codex --version < 0.130.0`. Operator runbook (Task #61) lives at `internal/ops/RUNBOOK.md` (989 lines covering install, day-2 ops, restart-resume drill, cost cap response, kill drill, maintenance). Wall-clock variants (Litestream paired restore at matching timestamps, launchd reboot drill, caffeinate 20-min idle observation) are documented in `internal/specs/spikes/S-7-phase5-checkpoint.md` §3-5 for execution against the real Mac mini at release time.
 
 - Single Python process, launchd-supervised.
 - AMC inbound webhook + outbound REST per the AMC contract (HMAC, idempotency, dedupe, unread sweep).
@@ -1687,6 +1714,10 @@ logfire_enabled = true
 | S-1     | 2026-05-10 | Spike S-1          | §5.4 + §7.5 amended with Codex CLI v0.130.0 spawn invocation, JSONL event contract, and native `codex exec resume <session_id>` resume mechanism (no workaround needed). Phase 4 entry blocker resolved. |
 | Phase 1 | 2026-05-10 | Phase 1 build      | Phase 1 checkpoint complete: HMAC verify + dedupe listener (§5.2, §7.4), per-channel dispatcher (§5.2), per-user sender resolution (§5.11), conversation memory + session lifecycle (§5.7), basic agent + tools (§5.1), AMC REST client (§7.5), SOUL + ops prompt loader (§5.1), Pydantic Settings + secrets (§6.2, §15.3), SQLite hardening + retry helper (§6.1, §7.3), Alembic initial migration (§7.3), boot-time unread sweep (§5.2). All automated acceptance criteria green; manual demo (text "hi" via real AMC) is the user's gate. |
 | Phase 2 | 2026-05-10 | Phase 2 build      | Phase 2 checkpoint complete. §5.3 (CC delegation) + §5.5 (status/output/kill/list) signed off. Built: `ClaudeCodeBrief` + `delegation_brief.md` template (§5.3), git-worktree helper with cleanup (`_worktree.py`), async per-delegation subprocess reader (`_subprocess.py`, §5.6/§6.1: drains >10 MiB stdout without pipe block), `delegate_to_claude_code` with persist-before-yield contract (§5.3) + in-process §5.6 monitor, session-id capture via first JSON event (§7.5/S-3), agent-facing tools `check_delegation_status` / `get_delegation_output` / `kill_delegation` (raises `ApprovalRequired` in Phase 2) / `list_delegations` (§5.5), `shell_exec` with allowlist + metachar guard (§6.2/§5.8), full tool registration via `register_phase2_tools` (§5.1), and dispatcher catch of `ApprovalRequired` with locked stub reply. **Amendment to §7.5**: CC argv uses `--output-format stream-json --verbose` (NOT `--output-format json` as originally written) per spike S-3 — `stream-json` is the streaming JSONL contract; `--verbose` is required by the CLI when stream-json is selected. **Schema notes (carry-forward)**: migration 001 (Phase 1) uses PK `id` instead of `delegation_id`, and does not yet have `last_activity_ts` / `summary_one_line` / `error_reason` columns. Phase 2 code adapts: `_kill_delegation_forced` persists kill reason to existing `summary` column; `check_delegation_status` derives `last_activity_ts` from `MAX(delegation_output.ts)`. Deviations documented in `capo/tools/delegations.py` module docstring; a Phase 3+ migration may add the dedicated columns if Phase 4/5 needs richer semantics. Test count: 305 (Phase 1 end) → 310 (Phase 2 end); 5 net new in `tests/test_phase2_checkpoint.py` (chatty CC >10 MiB mixed-stream, status running, status completed, kill forced against real subprocess, `shell_exec` smoke). All automated acceptance criteria green; manual demo (text "refactor X in repo Y" via real AMC + real `claude` CLI) is **DEFERRED to user gate** per `docs/runbook-phase2-demo.md`, mirroring the Phase 1 manual-demo pattern. |
+| Phase 3 | 2026-05-11 | Phase 3 checkpoint | Phase 3 checkpoint complete. **§5.6 (DBOS Durable Monitoring + Restart Resume) and §5.13 (Live Progress Reporting / heartbeat)** signed off — see inline footnotes on both sections. Phase 3 work landed in `capo/workflows/__init__.py` (DBOS config + lifecycle; Task #28), `capo/workflows/_idempotency.py` (idempotency framework; Task #29), `capo/workflows/delegation.py` (`monitor_delegation` workflow + drain step + restart-resume contract + `summarize_run` + `notify_user` + heartbeat poller; Tasks #30-#34), and `capo/tools/claude_code.py` + `capo/main.py` (DBOS handoff at the spawn site + cold-boot resume sweep + AMC sender registration; Task #35). §9.3 checkpoint gate: spike S-2 GO carried forward; unit + integration suite at 479 tests passing (476 baseline + 3 new in `tests/test_phase3_checkpoint.py`). The §9.3 row 3 90-minute wall-clock test is **adapted** — `tests/test_phase3_checkpoint.py` exercises the identical code path against a `FAKE_CLAUDE_SCRIPT` and the unmodified 90-minute operator runbook is captured in `internal/specs/spikes/S-5-phase3-checkpoint.md` for execution against a real Claude Code at deploy time. §9.3 row 4 (no double-send after restart-mid-completion) verified via `notify_user.idempotency_key_for` stability + AMC stub dedupe counter. §9.3 row 5 (3 concurrent CC delegations) verified end-to-end with zero `sqlite3.OperationalError` surfaced and exactly one `notify_user` per delegation. Phase 3 retains the Phase 2 manual demo gate (`docs/runbook-phase2-demo.md`) plus the new S-5 operator runbook for the wall-clock variant — both are user/operator gates, not CI gates. |
+| S-1 (re-amend) | 2026-05-11 | Spike S-1 transcription (Task #37) | §5.4 and §7.5 re-amended with the finalized Codex CLI spawn/event/resume contract from spike S-1: explicit spawn argv (`codex exec --json --skip-git-repo-check --sandbox <mode> -C <dir> "<prompt>"`), explicit resume argv (`codex exec resume <thread_id> "<continuation>"`) with the forbidden-flag list (`--sandbox`, `--ask-for-approval`, `-C`, `--add-dir`), JSONL event schema (top-level `type`/`thread_id`, completion detection via `turn.completed`, non-JSON prefix tolerance for `Reading additional input from stdin...`), prohibition on `--ephemeral`, min Codex version pinned to `0.130.0`, and the single-threaded-per-`thread_id` resume serialization requirement. Phase 4 implementation tasks (#45 `delegate_to_codex` and #46 Codex resume in `monitor_delegation`) may now implement against the authoritative spec. |
+| Phase 4 | 2026-05-11 | Phase 4 checkpoint | Phase 4 checkpoint complete. **§5.4 (Codex tool surface), §5.8 (Approval Flows), §5.9 (subagent model routing slice), §5.10 (slash commands `/approve`+`/deny` + `kill_delegation` gating slice), and §7.5 (Codex argv + AMC `Idempotency-Key` contracts)** signed off — see inline Phase 4 footnotes on each section. Phase 4 work landed across `capo/tools/codex.py` (Task #45: `delegate_to_codex` + version check + thread_id capture + DBOS handoff), `capo/workflows/approval.py` (Task #39: `request_approval` workflow + `notify_approval` idempotent step + `force_resolve_approval`), `capo/workflows/delegation.py` (Task #46: per-agent resume dispatch + `_build_codex_resume_argv`), `capo/transport/dispatcher.py` + `capo/transport/slash.py` (Tasks #40-#41: inbound `/approve`+`/deny` routing), `capo/tools/basic.py` (Task #42: `shell_exec` approval gating), `capo/tools/claude_code.py` + `capo/tools/codex.py` (Task #43: out-of-`projects_root` + dangerous-sandbox gating), `capo/tools/delegations.py` (Task #44: `kill_delegation` owner-vs-non-owner gating + cascade-cancel via `json_extract`), and migrations `002_approvals.py` + `003_approvals_request_types.py` (Task #38, Task #43). §9.4 checkpoint gate: full unit + integration suite at 635 tests passing (629 baseline + 6 new in `tests/test_phase4_checkpoint.py`). The §9.4 wall-clock variants (30-min / 24-h approval timeout, real-codex restart-resume against a live rollout, real-AMC inbound routing) are **adapted** — `tests/test_phase4_checkpoint.py` exercises the identical code paths against compressed FAKE_CODEX_SCRIPT + 2s `[approval].timeout_seconds` + `DBOS.send_async` direct routing, and the unmodified wall-clock variants are captured in `internal/specs/spikes/S-6-phase4-checkpoint.md` (operator runbook covering approve / deny / timeout / codex delegation / codex restart-resume / kill-cascade against real CLIs and real AMC at deploy time). Phase 4 retains the Phase 2/3 manual demo gates plus the new S-6 operator runbook — all operator gates, not CI gates. |
+| Phase 5 | 2026-05-11 | Phase 5 checkpoint | Phase 5 checkpoint complete. **§5.9 (Cost Caps + Model Routing), §5.10 (Slash Commands finalized: `/new` + `/status` + `/clear` + `/override` + `/kill` + `/approve` + `/deny` + NL agent-tool fallback), §5.11 (Multi-User Support partitioning re-asserted across Phase 5 surfaces), §5.12 (Health Check Endpoint), §6.5 (Observability — Logfire instrumentation + span taxonomy enforcement + alerts catalogue), and §8.1 (V1 In-Scope ops: Litestream replication + launchd plist + caffeinate helper + boot-time CLI pre-checks + operator runbook)** signed off — see inline Phase 5 footnotes on each section. Phase 5 work landed across `capo/costs.py` + migration `004_costs.py` (Task #48: cost accountant with Pydantic-AI usage ingestion + Decimal-quantized totals), `capo/budget.py` (Task #49: pre-agent budget hook with soft/hard/overridden state machine, fail-open), `capo/observability.py` (Tasks #50-#51: `configure_logfire` + named span constructors enforcing §6.5 taxonomy, audit test rejects raw `with_span` calls), `capo/transport/slash.py` + `capo/transport/dispatcher.py` (Task #52: `/new` / `/status` / `/clear` / `/kill` / `/override` pre-agent intercept consuming zero tokens), `capo/tools/session.py` (Task #53: `session_new` / `session_status` / `session_clear` NL agent tools), `capo/memory/compaction.py` (Task #54: `should_compact` + hybrid `compact_thread_async` with atomic DELETE+INSERT under `begin_immediate_with_retry` + snapshot-drift detection + fail-open), `capo/maintenance/retention.py` (Task #55: `prune_delegation_output` + nightly 03:00-local scheduler + `vacuum_after_prune`), `capo/transport/health.py` (Task #56: 7-probe `/healthz` endpoint with critical set `{state_db, dbos_db, dbos_launched}`, per-probe 2s timeout, 5s overall budget, never-raises contract), `internal/ops/litestream.yml` + `internal/ops/litestream-install.md` (Task #57: paired-replica config + restore runbook), `internal/ops/com.you.capo.plist` + `internal/ops/launchd.md` (Task #58: launchd plist with `KeepAlive` + `RunAtLoad` + Apple Silicon + Intel PATH), `capo/caffeinate.py` (Task #59: refcount-by-set `CaffeinateManager` wired at every spawn site + cold-boot re-track), `internal/ops/logfire-alerts.yml` + `internal/ops/logfire-alerts.md` (Task #60: 9-alert declarative catalogue), `internal/ops/RUNBOOK.md` (Task #61: 989-line operator runbook), and `capo/boot.py` (Task #62: boot-time `claude` + `codex` version pre-checks, exit 2 on below-min). §9.5 checkpoint gate: full unit + integration suite at 944 tests passing (939 baseline + 5 new in `tests/test_phase5_checkpoint.py`). The §9.5 wall-clock variants (Litestream paired restore at matching snapshot timestamps, launchd reboot + KeepAlive drill, caffeinate 20-min idle observation against a real long delegation) are **adapted** — the CI suite exercises the identical code paths against compressed in-process equivalents (seeded `costs` rows + pinned UTC day for cost-cap, ASGI TestClient for `/healthz`, stub summarizer + seeded history for compaction, scheduler tick driver for retention, `ChannelWorker` sentinel for `/override`), and the unmodified wall-clock variants are captured in `internal/specs/spikes/S-7-phase5-checkpoint.md` (operator runbook covering paired Litestream restore + launchd boot drill + caffeinate observation against the real Mac mini at release time). Phase 5 retains the Phase 2/3/4 manual demo gates plus the new S-7 operator runbook — all operator gates, not CI gates. V1 readiness gate cleared: operator can install (launchd plist + Litestream config), run (cost caps + DBOS resume + approvals), observe (Logfire spans + alerts + `/healthz`), and recover (paired-restore drill documented). |
 
 ---
 

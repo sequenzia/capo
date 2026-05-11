@@ -1,0 +1,32 @@
+{
+  "id": "30",
+  "subject": "Implement monitor_delegation DBOS workflow",
+  "description": "In `capo/workflows/delegation.py`, implement `monitor_delegation` as a `@DBOS.workflow()` with `delegation_id` as the deterministic input. Workflow body: register the per-delegation reader as a `@DBOS.step` (so its progress is checkpointed), poll subprocess `returncode` periodically, transition status on completion to `completed` / `failed` / `killed`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `@DBOS.workflow()` with `delegation_id` as deterministic input.\n- [ ] Continuous output drain step persists chunks via the batched-insert buffer.\n- [ ] Returncode polling at a configurable interval (default 1s).\n- [ ] Status transitions: running → completed (returncode 0), failed (non-zero or exception), killed (SIGTERM/SIGKILL signaled by user).\n- [ ] All `@DBOS.step` calls with external side effects use the idempotency framework.\n\n_Edge Cases:_\n- [ ] Subprocess crashes between two polling cycles: transition to `failed` with reason from stderr/exit code.\n- [ ] Workflow re-entered while subprocess is still running: do NOT re-spawn; check existing PID first (per the no-re-attach-by-PID rule, this means the resume path covers spawn).\n\n_Error Handling:_\n- [ ] Workflow exception surfaced via Logfire span and reflected on the row as `failed`.\n\n_Performance:_\n- [ ] Subprocess output ingest: zero loss + zero pipe blocking on ≥10 MB stdout (re-verifies §6.1 within DBOS context).\n\n**Testing Requirements:**\n• Integration: full workflow lifecycle (spawn → drain → completion → status)\n• Integration: stress with chatty subprocess\n• Integration: kill via signal → status `killed`\n\nSource: internal/specs/capo-SPEC.md Sections 5.6, 9.3",
+  "activeForm": "Implementing monitor_delegation DBOS workflow",
+  "status": "completed",
+  "blocks": [
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "45"
+  ],
+  "blockedBy": [
+    "28",
+    "29",
+    "21"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "DBOS Durable Monitoring",
+    "task_uid": "internal/specs/capo-SPEC.md:dbos:monitor-workflow:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume"
+  }
+}

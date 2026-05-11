@@ -1,0 +1,27 @@
+{
+  "id": "62",
+  "subject": "Add boot-time pre-checks for claude and codex CLI versions",
+  "description": "In `capo/main.py` startup, run `claude --version` and (if `agents.codex.enabled=true`) `codex --version`; fail fast if missing or below the minimum versions established by S-3 and S-1 respectively (per §12.1 version policy).\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Boot calls `claude --version` and parses the result.\n- [ ] If `claude` not on PATH or below the minimum version pin (set by S-3 findings): boot fails with a clear error citing the required version.\n- [ ] If `agents.codex.enabled=true` and `codex` not on PATH or below S-1's pin: boot fails with a clear error.\n- [ ] Pre-check is fast (< 500ms total).\n\n_Edge Cases:_\n- [ ] PATH on launchd doesn't include Homebrew: error message tells the user to fix the plist `EnvironmentVariables.PATH` (per §13 risk mitigation).\n\n**Testing Requirements:**\n• Unit: version comparator handles `0.x`, `1.x`, semver suffixes\n• Integration: synthesize a \"PATH without claude\" scenario → boot fails with clear error\n\nSource: internal/specs/capo-SPEC.md Sections 9.5, 12.1, 13",
+  "activeForm": "Adding boot-time CLI version pre-checks",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "6",
+    "47",
+    "2",
+    "4"
+  ],
+  "metadata": {
+    "priority": "medium",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Boot pre-checks",
+    "task_uid": "internal/specs/capo-SPEC.md:boot:precheck:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "52",
+  "subject": "Implement session-control slash commands (/new, /status, /clear, /kill, /override)",
+  "description": "In `capo/transport/dispatcher.py`, add a pre-agent slash-command parser per §5.10. Commands consume ZERO tokens (no agent call) and return their action result via `amc.send`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `/new` — End current session (set `sessions.ended_at = NOW()`), start a new one. In-memory history reference cleared; older history retained on disk.\n- [ ] `/status` — Reply with current session info: messages, approximate token count, running delegations.\n- [ ] `/clear` — Same as `/new` but also marks the session's history as compacted-out (a single \"cleared by user\" marker remains in `conversation_history`).\n- [ ] `/kill <delegation_id>` — Initiates `kill_delegation` (which triggers approval per Phase 4).\n- [ ] `/approve <id>` and `/deny <id>` — already wired in Phase 4.\n- [ ] `/override` — already wired by budget hook in this phase.\n- [ ] All slash commands consume ZERO tokens (no `agent.run`).\n\n_Edge Cases:_\n- [ ] Unknown slash command: replied with a list of valid commands.\n- [ ] Slash command at start of message but with trailing text: ignore trailing text.\n\n**Testing Requirements:**\n• Unit: parser matches every command + arg form\n• Integration: `/status` reflects accurate live state\n• Integration: `/new` creates a new active session row and ends the prior one\n\nSource: internal/specs/capo-SPEC.md Sections 5.10, 9.5",
+  "activeForm": "Implementing session-control slash commands",
+  "status": "completed",
+  "blocks": [
+    "53",
+    "63"
+  ],
+  "blockedBy": [
+    "11",
+    "16",
+    "24",
+    "47"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "M",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Session Control + Slash Commands",
+    "task_uid": "internal/specs/capo-SPEC.md:session:slash-commands:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

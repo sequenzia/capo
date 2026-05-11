@@ -1,0 +1,25 @@
+{
+  "id": "54",
+  "subject": "Implement hybrid conversation compaction",
+  "description": "Build `capo/memory/compaction.py` per §5.7: when current session's history tokens exceed `compaction.threshold_tokens` (default 100,000), identify oldest 50% of messages, summarize via `config.models.router`, **retain all messages referencing an active delegation handle (`cc-<id>` or `codex-<id>`) verbatim** regardless of age, persist compacted history, log a `capo.memory.compact` Logfire span.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Token counter for the active session uses the same model family as `config.models.default`.\n- [ ] At threshold: oldest 50% messages identified by `message_index`.\n- [ ] Cheap model (`config.models.router`) summarizes them into a single system message.\n- [ ] Active delegation handles preserved verbatim. **Active** = any delegation in `running` or `pending_approval` state at compaction time (per §5.7 definition).\n- [ ] Compacted history persisted; `sessions.compacted_to_message_index` updated.\n- [ ] `capo.memory.compact` span emitted with `thread_id`, `messages_summarized`, `tokens_before`, `tokens_after` per §6.5.\n- [ ] When `compaction.enabled = false` (per §11.2), compaction is a no-op.\n\n_Edge Cases:_\n- [ ] Every old message references an active delegation: compaction is a no-op (nothing summarizable).\n- [ ] Token counting fails: log warning, skip compaction this turn.\n\n_Performance:_\n- [ ] Compaction step < 5s with cheap model on a 110K-token history (per §10.3).\n\n**Testing Requirements:**\n• Integration: synthetic 110K-token history triggers compaction; messages referencing active handles preserved verbatim\n• Integration: compacted-to marker prevents re-compaction of the same range\n• Performance: < 5s per §10.3\n\nSource: internal/specs/capo-SPEC.md Sections 5.7, 6.5, 9.5, 10.3, 11.2",
+  "activeForm": "Implementing hybrid conversation compaction",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "15",
+    "47"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "L",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Conversation Memory",
+    "task_uid": "internal/specs/capo-SPEC.md:memory:compaction:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

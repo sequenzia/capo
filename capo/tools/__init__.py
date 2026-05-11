@@ -89,9 +89,37 @@ def register_phase2_tools(agent: Agent[CapoDeps, Any]) -> None:
     agent.tool(list_delegations)
 
 
+def register_phase5_tools(agent: Agent[CapoDeps, Any]) -> None:
+    """Register the three session-control NL tools (spec §5.10, §5.11).
+
+    Tools registered (in declaration order):
+
+    1. :func:`capo.tools.session.session_new` — natural-language
+       counterpart of ``/new``. Ends the current session so the next
+       turn opens a fresh one. Older conversation history is retained
+       on disk.
+    2. :func:`capo.tools.session.session_status` — natural-language
+       counterpart of ``/status``. Returns the active delegation count,
+       today's UTC USD cost, current orchestrator model, and the
+       conversation message count for the active session.
+    3. :func:`capo.tools.session.session_clear` — natural-language
+       counterpart of ``/clear``. Deletes per-thread conversation
+       memory AND ends the active session. Returns the number of rows
+       cleared.
+
+    The implementations share their DB helpers with the dispatcher's
+    Task #52 slash-command handlers via :mod:`capo.tools.session`, so
+    both surface areas produce the same side effect on ``state.db``.
+    """
+    from capo.tools.session import register_session_tools
+
+    register_session_tools(agent)
+
+
 __all__ = [
     "fetch_url",
     "register_basic_tools",
     "register_phase2_tools",
+    "register_phase5_tools",
     "web_search",
 ]

@@ -54,6 +54,11 @@ from capo.tools.claude_code import (
     _extract_session_id,
     delegate_to_claude_code,
 )
+from capo.workflows import destroy_dbos, init_dbos, is_launched, launch_dbos
+from capo.workflows.delegation import (
+    _DELEGATION_REGISTRY,
+    register_amc_sender,
+)
 
 # ---------------------------------------------------------------------------
 # Scaffolding — config + on-disk roots + state.db with §7.3 schema.
@@ -179,6 +184,23 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.fixture(autouse=True)
+def _ensure_clean_dbos_state():
+    """DBOS is a process-level singleton; clean teardown between tests."""
+    import contextlib as _contextlib
+
+    with _contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    yield
+    with _contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    with _contextlib.suppress(Exception):
+        register_amc_sender(None)
+    if is_launched():
+        with _contextlib.suppress(Exception):
+            destroy_dbos()
+
+
 @pytest.fixture
 def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
     projects_root = tmp_path / "projects"
@@ -207,6 +229,12 @@ def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
         conn.execute(_DELEGATION_OUTPUT_DDL)
     finally:
         conn.close()
+
+    # Task #35: delegate_to_claude_code now hands off to DBOS
+    # monitor_delegation. Launch DBOS here so integration tests that
+    # drive the spawn site don't trip the DBOSNotLaunchedError guard.
+    init_dbos(settings)
+    launch_dbos()
 
     return settings, projects_root, workspaces_root
 

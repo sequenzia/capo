@@ -31,6 +31,7 @@ import logging
 import shlex
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -38,9 +39,20 @@ from pydantic import BaseModel, ConfigDict
 from pydantic_ai import ModelRetry, RunContext
 
 from capo.deps import CapoDeps, FetchError, SearchResult
+from capo.tools._approval import (
+    REQUEST_TYPE_SHELL_EXEC,
+    ApprovalRejected,
+    ApprovalRequired,
+    ApprovalUnavailableError,
+    new_approval_id,
+    request_tool_approval,
+    utc_iso_now,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for type hints
     from pydantic_ai import Agent
+
+    from capo.workflows.approval import ApprovalDecision
 
 logger = logging.getLogger("capo.tools.basic")
 
@@ -114,20 +126,11 @@ class ShellResult(BaseModel):
     """Wall-clock runtime in seconds."""
 
 
-class ApprovalRequired(Exception):
-    """Raised by :func:`shell_exec` when a command is not auto-approvable.
-
-    Per spec §5.8 the approval workflow itself lands in Phase 4 — Phase 2
-    just raises this exception so callers (the agent loop, eventually the
-    DBOS workflow wrapper) can route to an approval prompt. Attributes
-    surface the *original* command string and a one-line ``reason`` so the
-    approval UI can show the user exactly what was about to run.
-    """
-
-    def __init__(self, command: str, reason: str) -> None:
-        self.command = command
-        self.reason = reason
-        super().__init__(f"approval required for {command!r}: {reason}")
+# ``ApprovalRequired``, ``ApprovalRejected`` and ``ApprovalUnavailableError``
+# now live in :mod:`capo.tools._approval` so the delegation tools
+# (Task #43) can share them. They are re-exported here at module level
+# for backwards compatibility with callers / tests that imported them
+# from ``capo.tools.basic``.
 
 
 # ---------------------------------------------------------------------------
@@ -320,51 +323,37 @@ def _resolve_cwd(
     )
 
 
-def shell_exec(
+@dataclass(frozen=True)
+class _ShellPrecheck:
+    """Internal result of the synchronous shell_exec pre-check phase.
+
+    ``raw`` and ``argv`` are the validated original command + tokens.
+    ``resolved_cwd`` is the path the command would run in. ``allowlisted``
+    is ``True`` when the binary is in ``settings.shell.allowlist``; ``False``
+    means the caller MUST route through the approval workflow before
+    executing.
+    """
+
+    raw: str
+    argv: list[str]
+    resolved_cwd: Path
+    allowlisted: bool
+
+
+def _shell_exec_precheck(
     ctx: RunContext[CapoDeps],
     command: str,
-    cwd: str | None = None,
-) -> ShellResult:
-    """Execute an allowlisted shell command and return its captured output.
+    cwd: str | None,
+) -> _ShellPrecheck:
+    """Run the synchronous structural checks for ``shell_exec``.
 
-    Behavior (spec §6.2):
+    Raises :class:`ApprovalRequired` for hard rejections that the approval
+    workflow itself would never accept: shell metacharacters, tokenization
+    errors, ``sudo``, cwd outside ``projects_root`` / ``workspaces_root``.
 
-    * The first token of ``command`` (after :func:`shlex.split`) must be in
-      the configured allowlist. Anything else raises
-      :class:`ApprovalRequired`.
-    * Shell metacharacters in the raw command string (``;``, ``&&``,
-      ``||``, ``|``, backticks, ``$(``, ``>``, ``<``) are rejected, as is
-      any use of ``sudo``.
-    * The process is run with ``shell=False`` (argv form) so the OS never
-      re-interprets the command.
-    * ``cwd`` is resolved to an absolute path; it must live within
-      ``projects_root`` ∪ ``workspaces_root``. ``None`` defaults to
-      ``projects_root``.
-    * Runtime is capped at :data:`SHELL_EXEC_TIMEOUT_S` seconds. On
-      timeout the process is killed and we return a :class:`ShellResult`
-      with ``exit_code=-1`` and a clear stderr marker — staying in-band
-      keeps the agent loop alive (mirrors the ``fetch_url`` convention of
-      returning structured errors rather than raising).
-    * stdout/stderr are each capped at
-      :data:`SHELL_EXEC_OUTPUT_MAX_BYTES` with a truncation marker.
-
-    Args:
-        command: The full command line (e.g. ``"git status"``). Will be
-            tokenized via :func:`shlex.split`.
-        cwd: Optional working directory. Must resolve to a path within
-            ``projects_root`` or ``workspaces_root``. ``None`` defaults to
-            ``projects_root``.
-
-    Returns:
-        :class:`ShellResult` with the exit code, captured streams, and
-        wall-clock runtime.
-
-    Raises:
-        ValueError: If ``command`` is empty / whitespace-only.
-        ApprovalRequired: If the command fails any allowlist / metachar /
-            path-scoping check. The exception's ``command`` and ``reason``
-            attributes carry the original input and a one-line explanation
-            so the (future) approval UI can render them.
+    Returns ``_ShellPrecheck`` with ``allowlisted=False`` when the binary
+    is NOT in the configured allowlist — caller decides whether to invoke
+    the approval workflow or fall back to ``ApprovalRequired``.
     """
     # --- Empty-command guard (clear ValueError per task spec).
     if not command or not command.strip():
@@ -415,17 +404,9 @@ def shell_exec(
     if argv[0] == "sudo" or "sudo" in argv:
         raise ApprovalRequired(raw, "sudo is not permitted")
 
-    # --- Allowlist check.
-    allowlist = set(ctx.deps.settings.shell.allowlist)
-    binary = argv[0]
-    if binary not in allowlist:
-        raise ApprovalRequired(
-            raw,
-            f"binary {binary!r} is not in the shell allowlist "
-            f"({sorted(allowlist)})",
-        )
-
-    # --- cwd scoping. May raise ApprovalRequired with a clear reason.
+    # --- cwd scoping (path-scope is also a structural check; even if a
+    # human approves a non-allowlisted binary they can't approve running
+    # outside the configured roots).
     resolved_cwd = _resolve_cwd(
         raw,
         cwd,
@@ -433,8 +414,22 @@ def shell_exec(
         workspaces_root=ctx.deps.workspaces_root,
     )
 
-    # --- Run. ``shell=False`` is non-negotiable; ``text=True`` decodes
-    # with the locale codec which is fine for the allowlisted binaries.
+    # --- Allowlist check (soft — caller routes through approval workflow
+    # if not allowlisted).
+    allowlist = set(ctx.deps.settings.shell.allowlist)
+    allowlisted = argv[0] in allowlist
+    return _ShellPrecheck(
+        raw=raw, argv=argv, resolved_cwd=resolved_cwd, allowlisted=allowlisted
+    )
+
+
+def _execute_command(raw: str, argv: list[str], resolved_cwd: Path) -> ShellResult:
+    """Execute the already-validated argv and return a :class:`ShellResult`.
+
+    Shared between the allowlisted path and the post-approval path —
+    ``shell=False``, byte-capped stdout/stderr, internal-timeout returns
+    ``exit_code=-1`` (not an exception) so the agent loop stays alive.
+    """
     start = time.monotonic()
     try:
         completed = subprocess.run(  # noqa: S603 - argv form, allowlisted binary
@@ -448,9 +443,6 @@ def shell_exec(
         )
     except subprocess.TimeoutExpired as exc:
         elapsed = time.monotonic() - start
-        # ``subprocess.run`` already killed the child on timeout. We
-        # surface a structured result with exit_code=-1 so the agent loop
-        # stays alive. Capture partial output if available.
         partial_stdout = exc.stdout if isinstance(exc.stdout, str) else (
             exc.stdout.decode("utf-8", errors="replace")
             if isinstance(exc.stdout, (bytes, bytearray))
@@ -494,6 +486,146 @@ def shell_exec(
     )
 
 
+async def _request_shell_approval(
+    ctx: RunContext[CapoDeps],
+    pre: _ShellPrecheck,
+    cwd: str | None,
+) -> ApprovalDecision:
+    """Invoke the §5.8 approval workflow for a non-allowlisted command.
+
+    Thin wrapper around :func:`capo.tools._approval.request_tool_approval`
+    that assembles the shell-specific ``request_payload``. Raises
+    :class:`ApprovalUnavailableError` (caught by :func:`shell_exec`)
+    when the approval workflow can't be reached — missing ``state.db``
+    path, DBOS not launched, or import failure.
+    """
+    # Caller-supplied deterministic inputs — generated BEFORE the call so a
+    # workflow replay observes the same approval_id + requested_at.
+    approval_id = new_approval_id()
+    requested_at = utc_iso_now()
+    request_payload: dict[str, Any] = {
+        "command": pre.raw,
+        "args": list(pre.argv),
+        "cwd": cwd if cwd is not None else str(pre.resolved_cwd),
+    }
+    return await request_tool_approval(
+        ctx.deps,
+        request_type=REQUEST_TYPE_SHELL_EXEC,
+        request_payload=request_payload,
+        approval_id=approval_id,
+        requested_at=requested_at,
+        log_subject=f"shell_exec {pre.raw!r}",
+    )
+
+
+async def shell_exec(
+    ctx: RunContext[CapoDeps],
+    command: str,
+    cwd: str | None = None,
+) -> ShellResult:
+    """Execute a shell command, gating non-allowlisted commands behind §5.8.
+
+    Behavior (spec §6.2, §5.8, §5.9, §7.5; Task #42):
+
+    * Empty / whitespace command → :class:`ValueError`.
+    * Shell metacharacters in the raw command string (``;``, ``&&``,
+      ``||``, ``|``, backticks, ``$(``, ``>``, ``<``), tokenization
+      errors, ``sudo``, and cwd outside ``projects_root`` ∪
+      ``workspaces_root`` → :class:`ApprovalRequired` (these are
+      structural argv-contract violations, not human-reviewable policy
+      decisions).
+    * If the binary IS in ``settings.shell.allowlist``: the command runs
+      directly with ``shell=False``; ``cwd=None`` defaults to
+      ``projects_root``; output is byte-capped per stream; internal
+      timeouts return ``exit_code=-1`` (in-band, not an exception).
+    * If the binary is NOT allowlisted: the §5.8 approval workflow is
+      invoked. ``approval_id`` is freshly generated via
+      :func:`uuid.uuid4.hex`; ``requested_at`` is the caller's UTC ISO
+      timestamp (``%Y-%m-%dT%H:%M:%SZ``); ``request_type='shell_exec'``;
+      ``request_payload={"command": cmd, "args": argv, "cwd": cwd}``;
+      ``requester_user_id`` and ``parent_thread_id`` populated from
+      :class:`CapoDeps`.
+      * On ``decision.status == "approved"``: the original command
+        executes via the same code path as allowlisted commands.
+      * On ``decision.status in {"denied", "expired", "cancelled"}``:
+        :class:`ApprovalRejected` is raised carrying the
+        :class:`~capo.workflows.approval.ApprovalDecision`.
+    * If the approval-workflow infrastructure is genuinely unavailable
+      (DBOS not launched, approval module not importable, ``state.db``
+      not configured): falls back to :class:`ApprovalRequired` for
+      backwards compatibility with unit tests and degraded environments.
+
+    Args:
+        command: The full command line (e.g. ``"git status"``). Tokenized
+            via :func:`shlex.split`.
+        cwd: Optional working directory. Must resolve to a path within
+            ``projects_root`` or ``workspaces_root``. ``None`` defaults
+            to ``projects_root``.
+
+    Returns:
+        :class:`ShellResult` with the exit code, captured streams, and
+        wall-clock runtime.
+
+    Raises:
+        ValueError: If ``command`` is empty / whitespace-only.
+        ApprovalRequired: Structural rejections OR approval-workflow
+            unavailable.
+        ApprovalRejected: Approval workflow ran and returned
+            ``denied``/``expired``/``cancelled``.
+    """
+    pre = _shell_exec_precheck(ctx, command, cwd)
+
+    if pre.allowlisted:
+        return _execute_command(pre.raw, pre.argv, pre.resolved_cwd)
+
+    # Non-allowlisted — route through the approval workflow.
+    try:
+        decision = await _request_shell_approval(ctx, pre, cwd)
+    except ApprovalUnavailableError as exc:
+        # Fall back to the prior ``ApprovalRequired`` behavior so callers in
+        # non-DBOS environments (unit tests, smoke runs) still get a
+        # well-typed signal instead of an opaque RuntimeError.
+        allowlist = sorted(set(ctx.deps.settings.shell.allowlist))
+        raise ApprovalRequired(
+            pre.raw,
+            (
+                f"binary {pre.argv[0]!r} is not in the shell allowlist "
+                f"({allowlist}) and approval workflow is unavailable "
+                f"({exc.reason})"
+            ),
+        ) from exc
+
+    if decision.status == "approved":
+        logger.info(
+            "shell_exec: approval %s approved by %s — executing %r",
+            decision.approval_id,
+            decision.resolved_by,
+            pre.raw,
+            extra={
+                "event": "capo.tools.basic.shell_exec.approved",
+                "approval_id": decision.approval_id,
+                "resolved_by": decision.resolved_by,
+            },
+        )
+        return _execute_command(pre.raw, pre.argv, pre.resolved_cwd)
+
+    # denied / expired / cancelled — typed error for the agent loop.
+    logger.info(
+        "shell_exec: approval %s resolved %s by %s (reason=%r)",
+        decision.approval_id,
+        decision.status,
+        decision.resolved_by,
+        decision.reason,
+        extra={
+            "event": "capo.tools.basic.shell_exec.rejected",
+            "approval_id": decision.approval_id,
+            "status": decision.status,
+            "resolved_by": decision.resolved_by,
+        },
+    )
+    raise ApprovalRejected(decision)
+
+
 # ---------------------------------------------------------------------------
 # Registration helper — called from build_agent.
 # ---------------------------------------------------------------------------
@@ -522,6 +654,7 @@ __all__ = [
     "FETCH_URL_TIMEOUT_S",
     "SHELL_EXEC_OUTPUT_MAX_BYTES",
     "SHELL_EXEC_TIMEOUT_S",
+    "ApprovalRejected",
     "ApprovalRequired",
     "ShellResult",
     "fetch_url",

@@ -1,0 +1,26 @@
+{
+  "id": "59",
+  "subject": "Implement caffeinate helper (runs while delegations active)",
+  "description": "Build `capo/ops/caffeinate.py` — runs `caffeinate -i` while any delegation is in `running` state to prevent the Mac mini from sleeping mid-delegation.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] When the first delegation enters `running`, spawn `caffeinate -i` as a child process.\n- [ ] When the last `running` delegation reaches a terminal state, terminate the `caffeinate` child.\n- [ ] Reference-counted: multiple concurrent delegations share one `caffeinate` process.\n- [ ] Process supervised: if `caffeinate` dies, respawn while delegations are still running.\n\n_Edge Cases:_\n- [ ] Capo restart while delegations running: on boot, recount and respawn `caffeinate`.\n- [ ] User has `caffeinate` already running for their own reasons: spawn an additional one (safe; OS handles ref-counting).\n\n**Testing Requirements:**\n• Integration: spawn delegation → `caffeinate` running; kill delegation → `caffeinate` terminated\n• Integration: 3 concurrent delegations → exactly one `caffeinate` process\n\nSource: internal/specs/capo-SPEC.md Sections 8.1, 9.5",
+  "activeForm": "Implementing caffeinate helper",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "22",
+    "47",
+    "45"
+  ],
+  "metadata": {
+    "priority": "medium",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "caffeinate helper",
+    "task_uid": "internal/specs/capo-SPEC.md:ops:caffeinate:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "id": "28",
+  "subject": "Configure DBOS to use ~/.capo/dbos.db",
+  "description": "In `capo/workflows/__init__.py`, configure DBOS to use `~/.capo/dbos.db` (path from `paths.dbos_db_path`). DBOS manages its own schema; Capo does NOT run Alembic against `dbos.db`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] DBOS configured at boot using `paths.dbos_db_path`.\n- [ ] `dbos.db` and `state.db` are SEPARATE SQLite files.\n- [ ] DBOS lifecycle hooks integrated with FastAPI startup/shutdown.\n- [ ] Boot waits for DBOS to be ready before serving the webhook.\n\n_Edge Cases:_\n- [ ] `~/.capo/` doesn't exist: Capo creates it with `0700` perms.\n- [ ] `dbos.db` corrupted: clear startup error citing the path; runbook references restore from Litestream.\n\n_Error Handling:_\n- [ ] DBOS init failure surfaced as a typed exception with the failing operation context.\n\n**Testing Requirements:**\n• Integration: clean boot creates `dbos.db` and accepts a workflow registration\n• Integration: `state.db` and `dbos.db` are independent files\n\nSource: internal/specs/capo-SPEC.md Sections 5.6, 9.3, 15.3",
+  "activeForm": "Configuring DBOS at ~/.capo/dbos.db",
+  "status": "completed",
+  "blocks": [
+    "29",
+    "30",
+    "36",
+    "39",
+    "56"
+  ],
+  "blockedBy": [
+    "6",
+    "27",
+    "3"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "DBOS Durable Monitoring",
+    "task_uid": "internal/specs/capo-SPEC.md:dbos:config:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume",
+    "produces_for": [
+      "30",
+      "39"
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "id": "47",
+  "subject": "Phase 4 checkpoint: approval and Codex integration tests",
+  "description": "Execute the Phase 4 checkpoint gate per §9.4.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Spike S-1 (Codex resume) complete; resume contract documented in spec.\n- [ ] §5.4 and §7.5 amended with exact Codex spawn invocation, output/event contract, and resume/fallback behavior BEFORE Codex implementation tasks committed.\n- [ ] All Phase 4 tests pass.\n- [ ] Integration test: Codex delegation survives restart with resume contract.\n- [ ] Integration test: `kill_delegation` triggers AMC approval, user replies `/deny`, action aborts, user notified.\n- [ ] Integration test: non-allowlisted `shell_exec` triggers approval, timeout fires after configured window, action aborts.\n- [ ] Spec checklist for §5.4, §5.5 (kill), §5.8 signed off in `internal/specs/capo-SPEC.md` change log.\n\n**Testing Requirements:**\n• Integration: Codex restart + resume\n• Integration: kill_delegation deny flow\n• Integration: shell_exec approval timeout flow\n\nSource: internal/specs/capo-SPEC.md Section 9.4 (Checkpoint Gate)",
+  "activeForm": "Running Phase 4 checkpoint",
+  "status": "completed",
+  "blocks": [
+    "48",
+    "50",
+    "52",
+    "54",
+    "55",
+    "56",
+    "57",
+    "58",
+    "59",
+    "62"
+  ],
+  "blockedBy": [
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46",
+    "4"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Phase 4 Checkpoint",
+    "task_uid": "internal/specs/capo-SPEC.md:phase-4:checkpoint:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows"
+  }
+}

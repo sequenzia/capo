@@ -1,0 +1,30 @@
+{
+  "id": "50",
+  "subject": "Configure Logfire instrumentation",
+  "description": "In `capo/main.py`, call `logfire.configure()` and `logfire.instrument_pydantic_ai()` at boot. Wire FastAPI instrumentation. Make Logfire optional via `observability.logfire_enabled` (per §15.3) — instrument only when enabled.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `logfire.configure()` called once at boot when `observability.logfire_enabled=true`.\n- [ ] Pydantic AI is instrumented; agent runs produce traces with `tokens_in`, `tokens_out`, `cost_usd`.\n- [ ] FastAPI is instrumented; webhook handler shows up as a span.\n- [ ] `LOGFIRE_TOKEN` is read from `.env`; missing token with `logfire_enabled=true` is a clear startup error.\n- [ ] When `logfire_enabled=false`, no Logfire calls are made (clean disable, not a no-op wrapper).\n\n_Edge Cases:_\n- [ ] Logfire backend unreachable at boot: continue with local logging only; emit a startup warning.\n\n**Testing Requirements:**\n• Integration: end-to-end run produces `capo.agent.run` span with token + cost attributes\n• Unit: disable path doesn't import Logfire's send pipeline\n\nSource: internal/specs/capo-SPEC.md Sections 6.5, 9.5, 15.3",
+  "activeForm": "Configuring Logfire instrumentation",
+  "status": "completed",
+  "blocks": [
+    "51",
+    "60",
+    "63"
+  ],
+  "blockedBy": [
+    "6",
+    "47"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Observability",
+    "task_uid": "internal/specs/capo-SPEC.md:logfire:configure:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish",
+    "produces_for": [
+      "51"
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "43",
+  "subject": "Wire delegation out-of-projects_root approval gating",
+  "description": "In `capo/tools/claude_code.py` (and later `codex.py`), check `brief.repo_path` against `paths.projects_root`. If outside, spawn the approval workflow with `action_kind='delegate_out_of_tree'` and `action_payload={'agent': ..., 'repo_path': ..., 'goal': ...}`. On approve, proceed with the spawn; on deny/expire, return tool error.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `repo_path` resolution uses canonical path (resolves symlinks, expanduser) before comparison.\n- [ ] In-tree paths bypass approval entirely.\n- [ ] Out-of-tree paths trigger approval; question text includes agent kind, goal, and full resolved path.\n- [ ] On approve: spawn proceeds normally.\n- [ ] On deny/expire: tool returns clear error; no row inserted.\n\n_Edge Cases:_\n- [ ] `repo_path` is a symlink pointing inside `projects_root`: treated as in-tree (after resolution).\n- [ ] `projects_root` is a symlink: resolved before comparison.\n\n**Testing Requirements:**\n• Integration: in-tree delegation no approval needed\n• Integration: out-of-tree delegation triggers approval; approve → spawn proceeds; deny → no row inserted\n\nSource: internal/specs/capo-SPEC.md Sections 5.3, 5.8, 9.4",
+  "activeForm": "Wiring out-of-projects_root approval gating",
+  "status": "completed",
+  "blocks": [
+    "47"
+  ],
+  "blockedBy": [
+    "22",
+    "39"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Approval Flows",
+    "task_uid": "internal/specs/capo-SPEC.md:approval:delegate-gating:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows"
+  }
+}

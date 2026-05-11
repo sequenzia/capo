@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Capo launchd job (per-user agent).
+
+  Template file. The deployed filename MUST be renamed to use the operator's
+  short username, e.g. com.alice.capo.plist. See internal/ops/launchd.md for the
+  install + rename steps.
+
+  Source spec: internal/specs/capo-SPEC.md §8.1, §8.3, §9.5
+  Source task: #58
+
+  Placeholders (replace before `launchctl bootstrap`):
+    {{USER}}         — operator's short username (output of `whoami`)
+    {{HOME}}         — operator's home directory (output of `echo $HOME`)
+    {{CAPO_DIR}}     — absolute path to the capo checkout (defaults to
+                       ~/dev/repos/capo per the runbook)
+    {{LOGFIRE_TOKEN_REF}} — reference token sourced at install time from the
+                       operator's keychain / .env (NEVER inline a real token in
+                       this plist — see launchd.md "Secret handling").
+
+  Architecture-specific PATH note:
+    /opt/homebrew/bin appears first (Apple Silicon default).
+    /usr/local/bin is included as fallback for Intel Macs (Homebrew default
+    there). Keep both ordered so the same plist works on either arch; on Intel
+    machines /opt/homebrew/bin is simply missing and skipped at lookup time.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.{{USER}}.capo</string>
+
+  <!-- `uv run capo` invokes the `capo` console_script defined in pyproject.toml
+       (capo.main:main). uv resolves the project venv from WorkingDirectory. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/uv</string>
+    <string>run</string>
+    <string>capo</string>
+  </array>
+
+  <!-- Explicit PATH so claude / codex / uv resolve at boot, before the user
+       has logged into a shell and sourced their profile. Order matters:
+         /opt/homebrew/bin  — Apple Silicon Homebrew (preferred)
+         /usr/local/bin     — Intel Homebrew fallback
+         /usr/bin, /bin     — system binaries (sh, awk, etc.)
+         ~/.local/bin       — uv default install location (`uv tool install`)
+         ~/.cargo/bin       — kept for tools shipped via cargo (e.g. some
+                              Litestream builds, ripgrep variants)
+       HOME is set explicitly because launchd does NOT inherit it from the user
+       session; tools that resolve config relative to $HOME (Claude Code
+       config, Codex rollout dir, uv cache) need this set. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:{{HOME}}/.local/bin:{{HOME}}/.cargo/bin</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>CAPO_CONFIG</key>
+    <string>{{CAPO_DIR}}/config.toml</string>
+    <!-- LOGFIRE_TOKEN is supplied via launchctl setenv at install time so
+         the secret never lives in a tracked file. See launchd.md
+         "Secret handling". The reference name documents the contract. -->
+    <key>LOGFIRE_TOKEN_REF</key>
+    <string>{{LOGFIRE_TOKEN_REF}}</string>
+  </dict>
+
+  <!-- WorkingDirectory must be the capo checkout so `uv run` resolves the
+       correct project and venv. Configurable per host. -->
+  <key>WorkingDirectory</key>
+  <string>{{CAPO_DIR}}</string>
+
+  <!-- Restart on crash, but NOT after a clean exit (SuccessfulExit=false).
+       This prevents launchd from looping on intentional `capo --version`
+       style short-runs and matches the §9.5 expectation. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <!-- Boot Capo on user login. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Throttle restarts so a crash-loop doesn't burn the CPU. launchd will
+       refuse to relaunch within ThrottleInterval seconds of the previous
+       start, regardless of KeepAlive. 10s is the §8.3 mitigation target
+       ("< 5s between crash and restart" is the upper bound goal but 10s
+       throttle is safe for crashloops). -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- Logs land in ~/Library/Logs/capo/. Ensure the directory exists
+       before bootstrap (install runbook handles `mkdir -p`). -->
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/Library/Logs/capo/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/Library/Logs/capo/stderr.log</string>
+
+  <!-- Disable App Nap so long-running delegations are not throttled. See
+       capo-SPEC §8.1 ("App Nap disabled"). -->
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>LowPriorityIO</key>
+  <false/>
+  <key>Nice</key>
+  <integer>0</integer>
+</dict>
+</plist>

@@ -1,0 +1,29 @@
+{
+  "id": "31",
+  "subject": "Implement restart-resume contract via claude --resume session_id",
+  "description": "In `capo/workflows/delegation.py`, on workflow re-entry (after a process restart), the workflow's first step is to **re-spawn** the subagent via `claude --resume <session_id>` (per §7.5 resume invocation). **Never** re-attach by PID. On resume failure, mark the delegation `failed` with reason \"session resume failed\" and notify the user.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] On `monitor_delegation` re-entry, the first step re-spawns CC via `claude --resume <session_id> --output-format json [--model X]`.\n- [ ] PID is updated on the row to the new subprocess PID; old PID is never reused.\n- [ ] If `--resume` returns error, mark row `failed` with reason \"session resume failed\" and trigger `notify_user` step.\n- [ ] Restart resilience: 100% of in-flight delegations resume after process restart (anchors §3.2 Phase 3 success metric).\n\n_Edge Cases:_\n- [ ] Restart mid-spawn (between subprocess.spawn and DB row insert): DBOS workflow doesn't exist yet; row is the source of truth — if missing, delegation is lost (acceptable per §5.6 edge case since user hasn't been told it started).\n- [ ] Restart between completion and `notify_user`: idempotency key on `notify_user` prevents double-send.\n- [ ] Session-resume fails: workflow marks `failed`, notifies user.\n- [ ] Subprocess orphaned and reaped by macOS: resume via session_id succeeds regardless of PID state.\n\n_Error Handling:_\n- [ ] Failure path always notifies the user before terminating the workflow.\n\n**Testing Requirements:**\n• Integration: kill -TERM Capo mid-CC-run, restart, verify new subprocess spawned via `--resume`\n• Integration: simulated `--resume` failure → row `failed` + user notified\n• Integration: success-metric test (anchors §3.2 row 1 + §9.3 checkpoint)\n\nSource: internal/specs/capo-SPEC.md Sections 3.2, 5.6, 7.5, 9.3",
+  "activeForm": "Implementing restart-resume contract",
+  "status": "completed",
+  "blocks": [
+    "36",
+    "46"
+  ],
+  "blockedBy": [
+    "30",
+    "23"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "DBOS Durable Monitoring",
+    "task_uid": "internal/specs/capo-SPEC.md:dbos:resume:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume",
+    "produces_for": [
+      "46"
+    ]
+  }
+}

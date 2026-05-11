@@ -58,6 +58,11 @@ from capo.transport.dispatcher import (
     ChannelWorker,
     format_approval_required_reply,
 )
+from capo.workflows import destroy_dbos, init_dbos, is_launched, launch_dbos
+from capo.workflows.delegation import (
+    _DELEGATION_REGISTRY,
+    register_amc_sender,
+)
 
 # ---------------------------------------------------------------------------
 # Schema bootstrap — re-uses migrations/001 the same way test_dispatcher.py
@@ -160,13 +165,31 @@ _VALID_ENV = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _ensure_clean_dbos_state():
+    """DBOS is a process-level singleton; clean teardown between tests."""
+    import contextlib as _contextlib
+
+    with _contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    yield
+    with _contextlib.suppress(Exception):
+        _DELEGATION_REGISTRY.clear()
+    with _contextlib.suppress(Exception):
+        register_amc_sender(None)
+    if is_launched():
+        with _contextlib.suppress(Exception):
+            destroy_dbos()
+
+
 @pytest.fixture
 def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
     """Build a ``Settings`` rooted at ``tmp_path`` with on-disk roots + state.db.
 
     Initializes the §7.3 schema so tools that touch the DB (the four
     delegation tools + ``delegate_to_claude_code``) work without bringing
-    up Alembic.
+    up Alembic. Also launches DBOS so the Task #35 spawn-site handoff
+    in :func:`delegate_to_claude_code` succeeds.
     """
     projects_root = tmp_path / "projects"
     workspaces_root = tmp_path / "workspaces"
@@ -201,6 +224,11 @@ def scaffold(tmp_path: Path) -> tuple[Settings, Path, Path]:
         conn.commit()
     finally:
         conn.close()
+
+    # Launch DBOS so the Task #35 spawn-site handoff doesn't trip the
+    # DBOSNotLaunchedError guard inside ``delegate_to_claude_code``.
+    init_dbos(settings)
+    launch_dbos()
 
     return settings, projects_root, workspaces_root
 
@@ -281,6 +309,17 @@ PHASE2_TOOLS: frozenset[str] = frozenset(
     }
 )
 
+# Phase-5 session-control NL tools (Task #53, spec §5.10 / §5.11). Mirror
+# the slash commands ``/new`` / ``/status`` / ``/clear`` so the LLM can
+# invoke them when the user phrases the request in natural language.
+PHASE5_TOOLS: frozenset[str] = frozenset(
+    {
+        "session_new",
+        "session_status",
+        "session_clear",
+    }
+)
+
 
 def test_build_agent_registers_all_phase1_and_phase2_tools(
     scaffold: tuple[Settings, Path, Path],
@@ -293,8 +332,10 @@ def test_build_agent_registers_all_phase1_and_phase2_tools(
     )
     names = _registered_tool_names(agent)
 
-    missing = (PHASE1_TOOLS | PHASE2_TOOLS) - names
-    assert not missing, f"expected all 8 tools registered; missing {sorted(missing)}"
+    missing = (PHASE1_TOOLS | PHASE2_TOOLS | PHASE5_TOOLS) - names
+    assert not missing, (
+        f"expected all 11 tools registered; missing {sorted(missing)}"
+    )
 
 
 def test_build_agent_registers_phase2_tools_with_descriptions(
@@ -350,9 +391,9 @@ def test_reimporting_capo_agent_does_not_change_tool_count(
     assert names_a == names_b, (
         f"tool registration changed across imports: {names_a ^ names_b}"
     )
-    # And both contain the full Phase-1 + Phase-2 set exactly once.
-    assert names_a == (PHASE1_TOOLS | PHASE2_TOOLS), (
-        f"expected exactly the 8 capo tools; got {sorted(names_a)}"
+    # And both contain the full Phase-1 + Phase-2 + Phase-5 set exactly once.
+    assert names_a == (PHASE1_TOOLS | PHASE2_TOOLS | PHASE5_TOOLS), (
+        f"expected exactly the 11 capo tools; got {sorted(names_a)}"
     )
 
 
@@ -370,7 +411,9 @@ def test_build_agent_called_twice_gives_independent_agents(
 
     assert a is not b
     assert _registered_tool_names(a) == _registered_tool_names(b)
-    assert _registered_tool_names(a) == (PHASE1_TOOLS | PHASE2_TOOLS)
+    assert _registered_tool_names(a) == (
+        PHASE1_TOOLS | PHASE2_TOOLS | PHASE5_TOOLS
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,37 @@
+{
+  "id": "39",
+  "subject": "Implement approval DBOS workflow",
+  "description": "Build `capo/workflows/approval.py` — DBOS workflow: insert `approvals` row with `status='pending'` → call `amc_client.send` with the approval question (envelope per §5.8 outbound shape) → await `DBOS.recv(approval_id, timeout=approval.timeout_seconds)` → on response, resolve the row to `approved`/`denied`; on timeout, resolve to `expired` and notify user.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Workflow accepts `(action_kind, action_payload, user_id, thread_id)` and returns the `choice` (`approved`/`denied`) or raises `ApprovalExpired`.\n- [ ] Inserts `approvals` row first, sends AMC question second, then awaits `DBOS.recv(approval_id)`.\n- [ ] Outbound approval envelope shape per §5.8: `{ approval_id: str, prompt: str, options: list[str] }` (forwarded as the `approval` field on `POST /messages/send`).\n- [ ] Timeout default: 30 minutes (`approval.timeout_seconds`); on timeout, status → `expired`, action aborted, user notified.\n- [ ] Step uses the idempotency framework so workflow restart never resends the question or re-resolves a row.\n\n_Edge Cases:_\n- [ ] Workflow restart after `amc.send` but before `DBOS.recv` completes: idempotency prevents resending.\n- [ ] User replies twice for the same `approval_id`: only the first reply resolves the row; subsequent are logged and ignored.\n- [ ] Approval round-trip latency exceeds timeout: status `expired`, action aborted, user notified (per §13 risk).\n\n_Error Handling:_\n- [ ] AMC `CHANNEL_NOT_FOUND` while sending question: row marked `expired` immediately with reason; no retry.\n\n**Testing Requirements:**\n• Integration: full approve flow → workflow returns `approved`\n• Integration: full deny flow → workflow returns `denied`\n• Integration: timeout flow → workflow raises `ApprovalExpired` and AMC notification recorded\n• Integration: restart between send and recv → exactly one approval question sent\n\nSource: internal/specs/capo-SPEC.md Sections 5.8, 9.4",
+  "activeForm": "Implementing approval DBOS workflow",
+  "status": "completed",
+  "blocks": [
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "47"
+  ],
+  "blockedBy": [
+    "28",
+    "29",
+    "38",
+    "12"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.4 Phase 4",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Approval Flows",
+    "task_uid": "internal/specs/capo-SPEC.md:approval:workflow:001",
+    "task_group": "capo",
+    "spec_phase": 4,
+    "spec_phase_name": "Codex Parity + Approval Flows",
+    "produces_for": [
+      "42",
+      "43",
+      "44"
+    ]
+  }
+}

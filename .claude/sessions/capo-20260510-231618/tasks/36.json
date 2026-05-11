@@ -1,0 +1,33 @@
+{
+  "id": "36",
+  "subject": "Phase 3 checkpoint: 90-minute restart-resume success metric",
+  "description": "Execute the Phase 3 checkpoint gate per §9.3. Anchors the V1 success metric (§3.2 row 1).\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] All Phase 3 unit + integration tests pass.\n- [ ] **Success-metric integration test**: spawn CC with a slow ~90-minute synthetic task, `kill -TERM` Capo at minute 45, `launchctl kickstart` it, verify CC completes and notification arrives.\n- [ ] Restart with completed-but-not-notified workflow does NOT double-send (idempotency verified).\n- [ ] Three concurrent CC delegations run in parallel without lock contention errors.\n- [ ] Spec checklist for §5.6, §5.13 (heartbeat) signed off in `internal/specs/capo-SPEC.md` change log.\n\n**Testing Requirements:**\n• Integration: 90-min restart test (anchors §3.2 + §10.2)\n• Integration: idempotent notify after restart-mid-completion\n• Integration: 3 concurrent delegations (uses S-2 spike findings)\n\nSource: internal/specs/capo-SPEC.md Sections 3.2, 9.3, 10.2 (Checkpoint Gate)",
+  "activeForm": "Running Phase 3 checkpoint gate",
+  "status": "completed",
+  "blocks": [
+    "37",
+    "38"
+  ],
+  "blockedBy": [
+    "28",
+    "29",
+    "30",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "3"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Phase 3 Checkpoint",
+    "task_uid": "internal/specs/capo-SPEC.md:phase-3:checkpoint:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume"
+  }
+}

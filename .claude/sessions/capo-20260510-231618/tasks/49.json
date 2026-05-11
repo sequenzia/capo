@@ -1,0 +1,26 @@
+{
+  "id": "49",
+  "subject": "Implement pre-tool-call budget hook (soft + hard cap behavior)",
+  "description": "Build `capo/budget/hooks.py` — pre-`agent.run` and pre-`delegate_*` hook that consults the accountant and applies soft/hard cap behavior per §5.9. Implements the override flow and a `budget_overrides(date, user_id)` table (added in this task's migration).\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Hook runs BEFORE every `agent.run` and every `delegate_*` call.\n- [ ] **Soft cap**: when day's total > `budget.soft_daily_usd`, swap `config.models.default` → `config.models.router` in-memory for remainder of day; send a one-line heads-up via AMC to `budget.notify_channel`. Heads-up is sent at most once per day.\n- [ ] **Hard cap**: when day's total > `budget.hard_daily_usd`, `capo.run` short-circuits with \"budget exceeded — reply 'override' to continue today\" message.\n- [ ] Dispatcher pre-parses inbound text for case-insensitive exact `override` or slash command `/override` BEFORE the agent loop. On match, INSERT a row in `budget_overrides(date, user_id)` scoped to the current `user_id`; this unlocks the rest of the day; resets at local midnight.\n- [ ] When `budget.enforcement_enabled = false` (per §11.2), hook is a no-op.\n- [ ] Emits `capo.budget.cap` Logfire spans on soft/hard hits per §6.5.\n\n_Edge Cases:_\n- [ ] User sends override BEFORE hard cap fires: row inserted but no effect until/unless cap fires.\n- [ ] Two users on the same Capo: override is scoped per `user_id`.\n\n_Error Handling:_\n- [ ] Accountant read failure: hook fails OPEN (allow the call) and logs a Logfire error.\n\n**Testing Requirements:**\n• Integration: synthetic accumulation crosses soft cap → model swap verified\n• Integration: synthetic accumulation crosses hard cap → override flow verified\n• Integration: midnight reset clears soft and hard cap effects\n\nSource: internal/specs/capo-SPEC.md Sections 5.9, 6.5, 9.5, 11.2",
+  "activeForm": "Implementing pre-tool-call budget hook",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "48",
+    "11",
+    "12"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Cost Caps + Model Routing",
+    "task_uid": "internal/specs/capo-SPEC.md:budget:hooks:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}

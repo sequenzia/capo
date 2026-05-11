@@ -180,7 +180,7 @@ def _ctx(deps: CapoDeps) -> RunContext[CapoDeps]:
 
 
 @pytest.mark.parametrize("binary", ["pwd", "ls", "which"])
-def test_allowlisted_binary_executes(
+async def test_allowlisted_binary_executes(
     deps: CapoDeps, scaffold: tuple[Settings, Path, Path], binary: str
 ) -> None:
     """Each of pwd / ls / which returns a ShellResult with exit_code 0."""
@@ -191,41 +191,41 @@ def test_allowlisted_binary_executes(
         "which": "which ls",
     }[binary]
 
-    result = shell_exec(_ctx(deps), command, cwd=str(projects_root))
+    result = await shell_exec(_ctx(deps), command, cwd=str(projects_root))
 
     assert isinstance(result, ShellResult)
     assert result.exit_code == 0
     assert result.runtime_seconds >= 0.0
 
 
-def test_pwd_returns_resolved_cwd(
+async def test_pwd_returns_resolved_cwd(
     deps: CapoDeps, scaffold: tuple[Settings, Path, Path]
 ) -> None:
     """``pwd`` echoes the resolved cwd we passed in."""
     _, projects_root, _ = scaffold
-    result = shell_exec(_ctx(deps), "pwd", cwd=str(projects_root))
+    result = await shell_exec(_ctx(deps), "pwd", cwd=str(projects_root))
     assert result.exit_code == 0
     assert result.stdout.strip() == str(projects_root.resolve())
 
 
-def test_cwd_none_defaults_to_projects_root(
+async def test_cwd_none_defaults_to_projects_root(
     deps: CapoDeps, scaffold: tuple[Settings, Path, Path]
 ) -> None:
     """``cwd=None`` defaults to projects_root per task spec."""
     _, projects_root, _ = scaffold
-    result = shell_exec(_ctx(deps), "pwd")
+    result = await shell_exec(_ctx(deps), "pwd")
     assert result.exit_code == 0
     assert result.stdout.strip() == str(projects_root.resolve())
 
 
-def test_cwd_inside_workspaces_root_allowed(
+async def test_cwd_inside_workspaces_root_allowed(
     deps: CapoDeps, scaffold: tuple[Settings, Path, Path]
 ) -> None:
     """A subdirectory of workspaces_root is an allowed cwd."""
     _, _, workspaces_root = scaffold
     sub = workspaces_root / "sub"
     sub.mkdir()
-    result = shell_exec(_ctx(deps), "pwd", cwd=str(sub))
+    result = await shell_exec(_ctx(deps), "pwd", cwd=str(sub))
     assert result.exit_code == 0
     assert result.stdout.strip() == str(sub.resolve())
 
@@ -248,41 +248,41 @@ def test_cwd_inside_workspaces_root_allowed(
         "cat < /etc/passwd",
     ],
 )
-def test_metacharacters_rejected(deps: CapoDeps, command: str) -> None:
+async def test_metacharacters_rejected(deps: CapoDeps, command: str) -> None:
     """All shell metacharacters trip ApprovalRequired."""
     with pytest.raises(ApprovalRequired) as exc_info:
-        shell_exec(_ctx(deps), command)
+        await shell_exec(_ctx(deps), command)
     # The exception carries the original command + a one-line reason.
     assert exc_info.value.command == command.strip()
     assert exc_info.value.reason
     assert "metacharacter" in exc_info.value.reason or "sudo" in exc_info.value.reason
 
 
-def test_sudo_rejected_as_first_token(deps: CapoDeps) -> None:
+async def test_sudo_rejected_as_first_token(deps: CapoDeps) -> None:
     """``sudo ls`` is rejected with a sudo-specific reason."""
     with pytest.raises(ApprovalRequired) as exc_info:
-        shell_exec(_ctx(deps), "sudo ls")
+        await shell_exec(_ctx(deps), "sudo ls")
     assert "sudo" in exc_info.value.reason
 
 
-def test_sudo_rejected_when_embedded(deps: CapoDeps) -> None:
+async def test_sudo_rejected_when_embedded(deps: CapoDeps) -> None:
     """``ls sudo`` (sudo as a non-first arg) is also rejected."""
     # Note: ``ls`` is allowlisted; the sudo guard fires before allowlist.
     with pytest.raises(ApprovalRequired) as exc_info:
-        shell_exec(_ctx(deps), "ls sudo")
+        await shell_exec(_ctx(deps), "ls sudo")
     assert "sudo" in exc_info.value.reason
 
 
-def test_non_allowlisted_binary_rejected(deps: CapoDeps) -> None:
+async def test_non_allowlisted_binary_rejected(deps: CapoDeps) -> None:
     """A binary outside the configured allowlist raises ApprovalRequired."""
     with pytest.raises(ApprovalRequired) as exc_info:
-        shell_exec(_ctx(deps), "rm -rf /tmp/foo")
+        await shell_exec(_ctx(deps), "rm -rf /tmp/foo")
     assert "rm" in exc_info.value.reason
     assert "allowlist" in exc_info.value.reason
     assert exc_info.value.command == "rm -rf /tmp/foo"
 
 
-def test_quoted_metachar_injection_rejected(deps: CapoDeps) -> None:
+async def test_quoted_metachar_injection_rejected(deps: CapoDeps) -> None:
     """The classic ``git log; rm -rf /`` injection is rejected.
 
     This is the security regression test called out in the task's testing
@@ -290,16 +290,16 @@ def test_quoted_metachar_injection_rejected(deps: CapoDeps) -> None:
     though shlex would otherwise turn it into clean tokens.
     """
     with pytest.raises(ApprovalRequired) as exc_info:
-        shell_exec(_ctx(deps), "git log; rm -rf /")
+        await shell_exec(_ctx(deps), "git log; rm -rf /")
     assert "metacharacter" in exc_info.value.reason
     # Original command surfaced verbatim for the approval UI.
     assert exc_info.value.command == "git log; rm -rf /"
 
 
-def test_quoted_metachar_inside_arg_rejected(deps: CapoDeps) -> None:
+async def test_quoted_metachar_inside_arg_rejected(deps: CapoDeps) -> None:
     """``git log '; rm -rf /'`` — quoted metachar — is also rejected."""
     with pytest.raises(ApprovalRequired):
-        shell_exec(_ctx(deps), "git log '; rm -rf /'")
+        await shell_exec(_ctx(deps), "git log '; rm -rf /'")
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ def test_quoted_metachar_inside_arg_rejected(deps: CapoDeps) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cwd_outside_roots_rejected(
+async def test_cwd_outside_roots_rejected(
     deps: CapoDeps, tmp_path: Path
 ) -> None:
     """A cwd outside both roots raises ApprovalRequired with a clear reason.
@@ -318,7 +318,7 @@ def test_cwd_outside_roots_rejected(
     outside = tmp_path / "outside-the-roots"
     outside.mkdir()
     with pytest.raises(ApprovalRequired) as exc_info:
-        shell_exec(_ctx(deps), "pwd", cwd=str(outside))
+        await shell_exec(_ctx(deps), "pwd", cwd=str(outside))
     assert "cwd" in exc_info.value.reason
     assert "outside" in exc_info.value.reason
 
@@ -328,16 +328,16 @@ def test_cwd_outside_roots_rejected(
 # ---------------------------------------------------------------------------
 
 
-def test_empty_command_rejected(deps: CapoDeps) -> None:
+async def test_empty_command_rejected(deps: CapoDeps) -> None:
     """Empty command string raises ValueError (NOT ApprovalRequired)."""
     with pytest.raises(ValueError, match="non-empty"):
-        shell_exec(_ctx(deps), "")
+        await shell_exec(_ctx(deps), "")
 
 
-def test_whitespace_command_rejected(deps: CapoDeps) -> None:
+async def test_whitespace_command_rejected(deps: CapoDeps) -> None:
     """Whitespace-only command also raises ValueError."""
     with pytest.raises(ValueError, match="non-empty"):
-        shell_exec(_ctx(deps), "   \t  ")
+        await shell_exec(_ctx(deps), "   \t  ")
 
 
 # ---------------------------------------------------------------------------
@@ -345,7 +345,7 @@ def test_whitespace_command_rejected(deps: CapoDeps) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_stdout_truncated_to_cap(
+async def test_stdout_truncated_to_cap(
     deps: CapoDeps, scaffold: tuple[Settings, Path, Path]
 ) -> None:
     """Large stdout is truncated to SHELL_EXEC_OUTPUT_MAX_BYTES with marker."""
@@ -353,7 +353,7 @@ def test_stdout_truncated_to_cap(
     # Create a file ~200 KiB; ``cat`` it; assert truncation marker.
     big = projects_root / "big.txt"
     big.write_bytes(b"x" * (200 * 1024))
-    result = shell_exec(
+    result = await shell_exec(
         _ctx(deps), f"cat {big.name}", cwd=str(projects_root)
     )
     assert result.exit_code == 0
@@ -372,7 +372,7 @@ def test_stdout_truncated_to_cap(
 # ---------------------------------------------------------------------------
 
 
-def test_timeout_returns_exit_code_minus_one(
+async def test_timeout_returns_exit_code_minus_one(
     deps: CapoDeps, scaffold: tuple[Settings, Path, Path]
 ) -> None:
     """A command that exceeds the timeout is killed; exit_code is -1.
@@ -385,7 +385,7 @@ def test_timeout_returns_exit_code_minus_one(
 
     # Patch the timeout to something very small so the test is fast.
     with patch.object(tools_basic, "SHELL_EXEC_TIMEOUT_S", 0.2):
-        result = shell_exec(
+        result = await shell_exec(
             _ctx(deps), "find /", cwd=str(projects_root)
         )
 
@@ -399,10 +399,10 @@ def test_timeout_returns_exit_code_minus_one(
 # ---------------------------------------------------------------------------
 
 
-def test_approval_required_carries_command_and_reason(deps: CapoDeps) -> None:
+async def test_approval_required_carries_command_and_reason(deps: CapoDeps) -> None:
     """ApprovalRequired exposes both ``command`` and ``reason`` attrs."""
     with pytest.raises(ApprovalRequired) as exc_info:
-        shell_exec(_ctx(deps), "make build")  # ``make`` not allowlisted
+        await shell_exec(_ctx(deps), "make build")  # ``make`` not allowlisted
 
     assert exc_info.value.command == "make build"
     assert "make" in exc_info.value.reason

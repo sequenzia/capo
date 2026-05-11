@@ -1,0 +1,121 @@
+# =============================================================================
+# Capo — Litestream replication config (spec §8.1)
+#
+# Replicates the two SEPARATE SQLite databases that back Capo:
+#   - ~/.capo/state.db   (Capo state — owned by Alembic, see capo/memory/store.py)
+#   - ~/.capo/dbos.db    (DBOS workflows — owned by DBOS migrations, see
+#                         capo/workflows/__init__.py)
+#
+# IMPORTANT: state.db and dbos.db are independent replication pipes. A clean
+# restore REQUIRES restoring BOTH from the same wall-clock window — see
+# `internal/ops/litestream-install.md` (the "paired restore drill" section).
+#
+# Default replica target: a LOCAL file replica at `~/.capo/replicas/`, so an
+# operator can stand up replication and exercise restore without provisioning
+# S3. Production deployments override `${CAPO_LITESTREAM_STATE_URL}` and
+# `${CAPO_LITESTREAM_DBOS_URL}` to point at S3 (preferred) or another
+# Litestream-supported destination (gs://, abs://, sftp://, file://).
+#
+# Litestream pins:
+#   - Tested against the 0.5.x line (multi-level compaction + LTX files).
+#   - Older 0.3.x configs (`snapshot.interval` at the replica level, no
+#     `levels:` block) are NOT compatible with this file.
+#
+# Env-var expansion: Litestream supports `${VAR}` substitution. Set these in
+# your launchd plist or the operator shell BEFORE invoking
+# `litestream replicate -config internal/ops/litestream.yml`:
+#
+#   CAPO_HOME                       (default: $HOME/.capo)
+#   CAPO_LITESTREAM_STATE_URL       (default: file://${CAPO_HOME}/replicas/state)
+#   CAPO_LITESTREAM_DBOS_URL        (default: file://${CAPO_HOME}/replicas/dbos)
+#   AWS_ACCESS_KEY_ID               (only when using s3:// replicas)
+#   AWS_SECRET_ACCESS_KEY           (only when using s3:// replicas)
+#   AWS_REGION                      (only when using s3:// replicas)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Global settings
+# -----------------------------------------------------------------------------
+
+# Bind Prometheus metrics on loopback only (Capo is loopback-only per §6.2).
+addr: "127.0.0.1:9091"
+
+# Multi-level compaction schedule (L0 is implicit and contains the raw LTX
+# files emitted on every sync). These intervals match the §8.1 recommendation
+# of "continuous WAL streaming with low-latency cloud-side recovery":
+#   L1 every 30s  — coalesce sub-minute writes into a small batch
+#   L2 every 5m   — coalesce into a 5-minute bucket
+#   L3 every 1h   — coalesce into hourly archives (cheap to retain)
+levels:
+  - interval: 30s
+  - interval: 5m
+  - interval: 1h
+
+# Snapshot policy. A snapshot is a full materialization of the database at a
+# point in time; restores start from a snapshot and replay LTX files forward.
+# 24h interval + 168h (7d) retention gives an operator a full week of
+# point-in-time restore windows at modest storage cost.
+snapshot:
+  interval: 24h
+  retention: 168h
+
+# L0 (raw LTX) retention after they have been merged into L1. Keep them for a
+# few minutes so a freshly-restarted replica can catch up without re-snapshot.
+l0-retention: 5m
+l0-retention-check-interval: 15s
+
+# Logging — text is easier for the operator runbook drill; switch to `json`
+# if Logfire / a log shipper is later wired up.
+logging:
+  level: info
+  type: text
+  source: false
+
+# -----------------------------------------------------------------------------
+# S3 credentials (inherited by any `s3://` replica below).
+# Safe to leave unset when using the default local-file replicas; Litestream
+# will simply ignore them.
+# -----------------------------------------------------------------------------
+access-key-id: ${AWS_ACCESS_KEY_ID}
+secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+region: ${AWS_REGION}
+
+# -----------------------------------------------------------------------------
+# Databases to replicate.
+#
+# Each entry is an INDEPENDENT replication pipe. Loss of one does NOT corrupt
+# the other, but a CONSISTENT restore requires both to be restored from a
+# matching timestamp window (see runbook §"Paired restore drill").
+# -----------------------------------------------------------------------------
+dbs:
+
+  # ---------------------------------------------------------------------------
+  # state.db — Capo application state (Alembic-managed).
+  # Holds: delegations, conversation messages, approvals, daily_costs, etc.
+  # ---------------------------------------------------------------------------
+  - path: ${CAPO_HOME}/state.db
+    replica:
+      # Default local-file replica so operators can verify replication on a
+      # fresh machine. Override via env var for cloud / S3.
+      #
+      # Local default:  file://${CAPO_HOME}/replicas/state
+      # Production:     s3://my-capo-bucket/state.db
+      url: ${CAPO_LITESTREAM_STATE_URL}
+
+      # Sync interval: how often the replica pushes LTX files. 1s gives sub-
+      # second RPO on local-file replicas and ~1s on S3 (matches §8.1
+      # "continuous WAL streaming").
+      sync-interval: 1s
+
+  # ---------------------------------------------------------------------------
+  # dbos.db — DBOS workflow + step state (DBOS-managed, see §5.6).
+  # Holds: workflow_status, workflow_inputs, step output cache, event K/V.
+  # Restore note: dbos.db state MUST be paired with state.db — DBOS
+  # idempotency keys reference rows in state.db.
+  # ---------------------------------------------------------------------------
+  - path: ${CAPO_HOME}/dbos.db
+    replica:
+      # Default:    file://${CAPO_HOME}/replicas/dbos
+      # Production: s3://my-capo-bucket/dbos.db
+      url: ${CAPO_LITESTREAM_DBOS_URL}
+      sync-interval: 1s

@@ -1,0 +1,25 @@
+{
+  "id": "32",
+  "subject": "Implement summarize_run DBOS step",
+  "description": "In `capo/workflows/delegation.py`, implement `summarize_run` as a `@DBOS.step` that, on subprocess completion, makes a single LLM call (cheap model — `config.models.router`) to produce a one-paragraph summary of the run, then persists the summary on the `delegations.summary` column.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Step pulls last N chunks of `delegation_output` (configurable, default 200) and the brief from `delegations.brief_json`.\n- [ ] Calls `config.models.router` with a short prompt; expects ≤ 250-token response.\n- [ ] Persists result via the BEGIN IMMEDIATE retry helper.\n- [ ] Step is idempotent via the idempotency framework (key derived from delegation_id + final returncode).\n\n_Edge Cases:_\n- [ ] Empty output (no chunks): summary is \"Subagent produced no output.\"\n- [ ] LLM call fails: summary set to \"Summary unavailable: <error>\"; workflow continues.\n\n**Testing Requirements:**\n• Unit: prompt construction snapshot\n• Integration: end-to-end run produces summary on row\n\nSource: internal/specs/capo-SPEC.md Sections 5.6, 9.3",
+  "activeForm": "Implementing summarize_run DBOS step",
+  "status": "completed",
+  "blocks": [
+    "36"
+  ],
+  "blockedBy": [
+    "30",
+    "7"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.3 Phase 3",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "DBOS Durable Monitoring",
+    "task_uid": "internal/specs/capo-SPEC.md:dbos:summarize:001",
+    "task_group": "capo",
+    "spec_phase": 3,
+    "spec_phase_name": "DBOS Durability + Restart Resume"
+  }
+}

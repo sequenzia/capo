@@ -1,0 +1,25 @@
+{
+  "id": "60",
+  "subject": "Configure Logfire alerts per §11.3 monitoring table",
+  "description": "Configure Logfire alerts via the alerts API (or YAML-managed equivalent) per §11.3.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Alert: delegation failure rate > 25% over 1h → AMC `notify_channel`.\n- [ ] Alert: AMC `send` 5xx rate > 10% over 15m → AMC + Logfire UI.\n- [ ] Alert: webhook signature failures > 5 in 5m → AMC + Logfire UI.\n- [ ] Alert: daily cost at 75% of soft cap → AMC `notify_channel`.\n- [ ] Alert: DBOS workflow failures > 3 in 1h → AMC + Logfire UI.\n- [ ] Alert: listener handler P99 latency > 2s for 5m → Logfire UI.\n- [ ] Alerts referenced by name from a checked-in config (so they can be re-applied if accidentally deleted).\n\n**Testing Requirements:**\n• Smoke: synthetic spike on each metric triggers the corresponding alert in a test Logfire project\n\nSource: internal/specs/capo-SPEC.md Sections 9.5, 11.3",
+  "activeForm": "Configuring Logfire alerts",
+  "status": "completed",
+  "blocks": [
+    "63"
+  ],
+  "blockedBy": [
+    "50",
+    "51"
+  ],
+  "metadata": {
+    "priority": "medium",
+    "complexity": "S",
+    "source_section": "9.5 Phase 5",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Observability",
+    "task_uid": "internal/specs/capo-SPEC.md:logfire:alerts:001",
+    "task_group": "capo",
+    "spec_phase": 5,
+    "spec_phase_name": "Cost Caps + Observability + Polish"
+  }
+}
