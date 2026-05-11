@@ -1,0 +1,36 @@
+{
+  "id": "11",
+  "subject": "Implement per-channel asyncio dispatcher",
+  "description": "Build `capo/transport/dispatcher.py` — one asyncio worker per `channel_id` processing envelopes in arrival order; different channels run in parallel. Worker pipeline: resolve `user_id` from envelope (via `[users]` mapping), call `agent.run(text, history, deps)`, then `amc.send` and `amc.mark_read`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] One asyncio worker per `channel_id`; envelopes processed in arrival order per channel.\n- [ ] Different channels run in parallel; queue depth bounded by `concurrency.queue_depth_max` (default 100 per channel; see §15.3).\n- [ ] Worker resolves `user_id` from envelope sender via Settings `[users]` table; unknown senders are rejected at the dispatcher (logged as defense-in-depth alongside AMC allowlist).\n- [ ] Worker calls `amc.send` then `amc.mark_read` after agent run; both via `transport/amc_client.py`.\n- [ ] `amc.mark_read` calls are idempotent on `message_id` and safe to retry.\n\n_Edge Cases:_\n- [ ] Worker crash mid-turn (exception during `agent.run`): log, send error reply to channel, mark message read, do NOT crash the dispatcher.\n- [ ] Long-running turn (>60s): handler already ACKed at 204; worker continues independently.\n\n_Error Handling:_\n- [ ] AMC `RATE_LIMITED`: transparent (sleep `Retry-After`, retry send).\n- [ ] AMC `PLATFORM_AUTH`: log Logfire alert, do not retry, send a \"Capo can't reach AMC — check your bearer token\" message via fallback (or skip if AMC unreachable).\n- [ ] AMC `CHANNEL_NOT_FOUND`: mark delegation orphaned, do not retry; reply text \"I can't reach that channel anymore\" if possible.\n\n**Testing Requirements:**\n• Unit: per-channel ordering preserved\n• Unit: unknown sender rejected with clear log\n• Integration: parallel channels don't block each other\n• Integration: worker exception → error reply sent + message marked read + dispatcher alive\n\nSource: internal/specs/capo-SPEC.md Sections 5.2, 5.11, 9.1, 15.3",
+  "activeForm": "Implementing per-channel dispatcher",
+  "status": "completed",
+  "blocks": [
+    "10",
+    "13",
+    "18",
+    "40",
+    "41",
+    "49",
+    "52",
+    "56"
+  ],
+  "blockedBy": [
+    "6",
+    "12",
+    "14",
+    "15",
+    "16",
+    "17"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "AMC Webhook Listener + Dispatcher",
+    "task_uid": "internal/specs/capo-SPEC.md:amc-webhook:dispatcher:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

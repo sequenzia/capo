@@ -1,0 +1,40 @@
+{
+  "id": "18",
+  "subject": "Phase 1 checkpoint: integration tests + manual demo",
+  "description": "Execute the Phase 1 checkpoint gate per §9.1.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] All Phase 1 unit + integration tests pass.\n- [ ] Manual demo: user texts \"hi\" via AMC; Capo replies. Webhook handler responds in < 1s (verified in Logfire trace).\n- [ ] HMAC signature mismatch returns 401 and never reaches dispatcher (asserted by integration test).\n- [ ] Duplicate `X-AMC-Delivery-Id` is deduped (integration test).\n- [ ] Restart with unread messages → all unread arrive at agent exactly once.\n- [ ] Pydantic Settings boot-time validation rejects a `.env` missing `AMC_WEBHOOK_SECRET` with clear error.\n- [ ] Spec checklist for §5.1, §5.2, §5.7 (basic), §5.11 signed off in `internal/specs/capo-SPEC.md` change log.\n\n_Performance:_\n- [ ] Webhook P99 < 1s under 1000 synthetic signed requests at 5 rps.\n\n**Testing Requirements:**\n• Smoke: end-to-end echo path against real AMC + cheap Anthropic model\n• Integration: restart-with-unread test\n• Integration: HMAC mismatch test\n• Integration: dedupe test\n• Performance: 1000 signed webhooks at 5 rps (assert P99 < 1s)\n\nSource: internal/specs/capo-SPEC.md Section 9.1 (Checkpoint Gate)",
+  "activeForm": "Running Phase 1 checkpoint",
+  "status": "completed",
+  "blocks": [
+    "19",
+    "20",
+    "21",
+    "25"
+  ],
+  "blockedBy": [
+    "1",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Phase 1 Checkpoint",
+    "task_uid": "internal/specs/capo-SPEC.md:phase-1:checkpoint:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

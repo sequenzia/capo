@@ -1,0 +1,25 @@
+{
+  "id": "17",
+  "subject": "Implement multi-user AMC sender → user_id resolution",
+  "description": "Wire `config.toml [users]` table parsing (in Settings) and dispatcher resolution: each envelope's `sender_id` is mapped to an internal `user_id` BEFORE the agent runs. Unknown senders are rejected at the dispatcher with a logged warning.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `Settings.users` is a typed mapping from sender id (e.g. `+15551234567`, `discord:user:123`) to internal `user_id`.\n- [ ] The TOML key after `[users.X]` is the literal `user_id` written to every domain table (per §15.3 note).\n- [ ] Dispatcher resolves `user_id` from envelope before `agent.run`; rejects unknown senders with logged warning.\n- [ ] V1 ships exactly one mapping; adding more is a config edit + restart.\n- [ ] No multi-user management UI in V1.\n\n_Edge Cases:_\n- [ ] Two senders mapped to the same `user_id`: both routed to the same conversation history (intended).\n- [ ] Sender id not in mapping: rejected, no record written.\n\n_Error Handling:_\n- [ ] Empty `[users]` table: boot fails with clear error explaining at least one user is required.\n\n**Testing Requirements:**\n• Unit: sender → user_id resolution correct for every config'd mapping\n• Unit: unknown sender rejected\n• Integration: dispatcher writes correct `user_id` to `conversation_history` for the resolved sender\n\nSource: internal/specs/capo-SPEC.md Sections 5.11, 9.1, 15.3",
+  "activeForm": "Implementing multi-user mapping",
+  "status": "completed",
+  "blocks": [
+    "11",
+    "18"
+  ],
+  "blockedBy": [
+    "6"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Multi-User Support",
+    "task_uid": "internal/specs/capo-SPEC.md:multi-user:resolution:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

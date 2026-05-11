@@ -1,0 +1,25 @@
+{
+  "id": "2",
+  "subject": "Run spike S-3: Claude Code JSON event schema",
+  "description": "Establish which `claude -p --output-format json` event types and fields can be depended on for status, session_id capture, and completion signaling. Pin a minimum CC version and document schema stability.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Capture sample JSON event streams from CC across at least 2 recent versions for the same brief.\n- [ ] Document the stable subset of event types and fields Capo will rely on (status, session_id, completion).\n- [ ] Determine whether session_id arrives in the first event or later, and document the exact field path.\n- [ ] Pin a minimum supported CC version that emits the documented stable subset.\n\n_Edge Cases:_\n- [ ] Note any events that fire only on error vs. only on success.\n- [ ] Note any backwards-incompatible changes observed between versions.\n\n**Testing Requirements:**\n• Output: `internal/specs/spikes/S-3-cc-json-schema.md` with event parser spec\n• Output: minimum CC version constant for boot-time pre-check\n\n**Output**: Findings document at `internal/specs/spikes/S-3-cc-json-schema.md` and a minimum CC version pin documented in spec §12.1.\n\nSource: internal/specs/capo-SPEC.md Section 9.0 (Spike S-3)",
+  "activeForm": "Running spike S-3 (Claude Code JSON event schema)",
+  "status": "completed",
+  "blocks": [
+    "19",
+    "23",
+    "27",
+    "62"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.0 Spikes",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Spike S-3 CC JSON Schema",
+    "task_uid": "internal/specs/capo-SPEC.md:spike:s3:001",
+    "task_group": "capo",
+    "spec_phase": 0,
+    "spec_phase_name": "Spikes"
+  }
+}

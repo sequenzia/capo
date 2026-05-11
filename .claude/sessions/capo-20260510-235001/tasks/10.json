@@ -1,0 +1,25 @@
+{
+  "id": "10",
+  "subject": "Implement AMC webhook listener with HMAC verify, dedupe, and fast-ACK",
+  "description": "Build `capo/transport/amc_listener.py` — FastAPI app exposing `POST /amc/webhook` bound to `127.0.0.1:8090` per §5.2 and §7.4.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] HMAC verification BEFORE parsing or logging the body: compute `sha256=<hex>` over raw body using `AMC_WEBHOOK_SECRET`; compare with `hmac.compare_digest` against `X-AMC-Signature`. Reject `401` on mismatch.\n- [ ] Fast-ACK: respond `204` within < 1s P99 after signature + dedupe; agent work happens in dispatcher worker, not handler.\n- [ ] Dedupe LRU keyed by `X-AMC-Delivery-Id` covering at least 15 minutes of retries; duplicates return `204` without enqueue.\n- [ ] Listener parses request body as `AMCInboundEnvelope` (Pydantic `extra=\"allow\"`) and enqueues to dispatcher.\n- [ ] `401` body matches §7.4: `{ \"error\": { \"code\": \"BAD_SIGNATURE\", \"message\": \"X-AMC-Signature does not match body HMAC\" } }`.\n\n_Edge Cases:_\n- [ ] Signature mismatch: `401`, no body parsed, log signature-fail metric.\n- [ ] Duplicate delivery: `204`, no enqueue, log dedupe-hit metric.\n- [ ] Long-running turn (>60s): handler already 204'd at ack time; worker handles in background.\n\n_Error Handling:_\n- [ ] Worker exception on enqueue must not block the handler; failures are logged and the request still returns `204` (idempotent retries are safe).\n\n_Performance:_\n- [ ] Webhook handler ACK P99 < 1s (synthetic 1000 reqs at 5 rps test).\n\n**Testing Requirements:**\n• Unit: HMAC verify accepts correct signature, rejects bad signature\n• Unit: dedupe LRU returns 204 on repeat delivery-id within window\n• Integration: 1000 synthetic signed webhooks at 5 rps; assert P99 < 1s ACK\n• Integration: signature mismatch never reaches dispatcher\n\nSource: internal/specs/capo-SPEC.md Sections 5.2, 6.1, 7.4, 9.1",
+  "activeForm": "Implementing AMC webhook listener",
+  "status": "completed",
+  "blocks": [
+    "18"
+  ],
+  "blockedBy": [
+    "6",
+    "11"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "AMC Webhook Listener + Dispatcher",
+    "task_uid": "internal/specs/capo-SPEC.md:amc-webhook:listener:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

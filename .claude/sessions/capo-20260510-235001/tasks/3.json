@@ -1,0 +1,23 @@
+{
+  "id": "3",
+  "subject": "Run spike S-2: DBOS + SQLite concurrent workflows",
+  "description": "Validate that DBOS handles ≥3 concurrent monitor workflows on SQLite without state corruption or pathological lock contention. Produces a go/no-go for the SQLite backend in V1 and a fallback plan if no-go.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Stand up DBOS against a SQLite `dbos.db`; run ≥3 concurrent synthetic workflows that write step-state and recv events.\n- [ ] Verify no lost steps, no corruption, and no `SQLITE_BUSY` errors surface to the workflow caller.\n- [ ] Measure step latency p50/p99 under contention and document the floor.\n\n_Edge Cases:_\n- [ ] Test workflow restart while N workflows are mid-step.\n- [ ] Test rapid `DBOS.send`/`DBOS.recv` ping-pong under load.\n\n_Error Handling:_\n- [ ] Document failure modes observed (if any) and propose mitigation or backend swap.\n\n**Testing Requirements:**\n• Stress: 3+ concurrent DBOS workflows on SQLite\n• Output: `internal/specs/spikes/S-2-dbos-sqlite.md` with go/no-go and fallback plan\n\n**Output**: Findings document at `internal/specs/spikes/S-2-dbos-sqlite.md` with explicit go/no-go for SQLite and Postgres fallback plan if no-go.\n\nSource: internal/specs/capo-SPEC.md Section 9.0 (Spike S-2)",
+  "activeForm": "Running spike S-2 (DBOS + SQLite concurrency)",
+  "status": "completed",
+  "blocks": [
+    "28",
+    "36"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.0 Spikes",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Spike S-2 DBOS SQLite",
+    "task_uid": "internal/specs/capo-SPEC.md:spike:s2:001",
+    "task_group": "capo",
+    "spec_phase": 0,
+    "spec_phase_name": "Spikes"
+  }
+}

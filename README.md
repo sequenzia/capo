@@ -1,1 +1,1 @@
-# Capo - The captain of your agents
+# Capo - The Boss of your Agents

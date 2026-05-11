@@ -1,0 +1,25 @@
+{
+  "id": "13",
+  "subject": "Implement boot-time unread sweep",
+  "description": "In `capo/main.py` startup: before serving the webhook, call `amc.get_unread()`, enqueue any unacked envelopes through the same dispatcher worker queue, then start the FastAPI server.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] On boot, `amc.get_unread()` is called BEFORE FastAPI starts serving.\n- [ ] Returned envelopes are enqueued through the per-channel dispatcher (same path as webhook envelopes).\n- [ ] On AMC unreachable: retry with backoff up to `max_boot_wait_seconds` (default 60s); after that, proceed and log a warning.\n- [ ] Successful sweep is logged with envelope count.\n\n_Edge Cases:_\n- [ ] Empty unread list: server starts immediately after one successful sweep.\n- [ ] Capo offline >13 min: AMC has dead-lettered older messages; sweep recovers what's still buffered.\n\n_Error Handling:_\n- [ ] Sweep failure within `max_boot_wait_seconds` → warning, continue boot.\n\n**Testing Requirements:**\n• Integration: restart with N unread → all N arrive at agent exactly once (verifies \"exactly once\" delivery via dedupe)\n• Integration: AMC offline at boot → boot proceeds after `max_boot_wait_seconds` with warning\n\nSource: internal/specs/capo-SPEC.md Sections 5.2, 6.4, 7.5, 9.1",
+  "activeForm": "Implementing boot-time unread sweep",
+  "status": "completed",
+  "blocks": [
+    "18"
+  ],
+  "blockedBy": [
+    "12",
+    "11"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "AMC Webhook Listener + Dispatcher",
+    "task_uid": "internal/specs/capo-SPEC.md:amc-webhook:boot-sweep:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

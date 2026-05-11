@@ -1,0 +1,31 @@
+{
+  "id": "7",
+  "subject": "Implement SQLite hardening and BEGIN IMMEDIATE retry helper",
+  "description": "Build `capo/memory/store.py` with: connection factory applying §7.3 pragmas at boot, a `BEGIN IMMEDIATE` retry helper per §7.3 contract (exponential backoff capped at `busy_timeout=5000ms`, raises `StoreUnavailable` on exhaustion), and a batched-insert helper for high-throughput chunk writes.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Pragmas applied at every connection: `journal_mode=WAL`, `synchronous=NORMAL`, `fullfsync=ON`, `busy_timeout=5000`, `journal_size_limit=67108864`, `foreign_keys=ON`.\n- [ ] `BEGIN IMMEDIATE` retry helper retries on `database is locked` with initial 50ms, factor 2, jitter ±25%, capped at 5000ms wall time; re-raises as `StoreUnavailable` after exhaustion.\n- [ ] Non-lock `OperationalError` propagates immediately without retry.\n- [ ] Batched-insert helper accepts a list of rows and a flush trigger (count or interval) and uses parameterized queries.\n\n_Edge Cases:_\n- [ ] Connection cleanup on caller error.\n- [ ] Concurrent writers from multiple asyncio tasks coordinate without `SQLITE_BUSY` to user.\n\n_Error Handling:_\n- [ ] `StoreUnavailable` is a typed exception with the failing operation context attached.\n\n**Testing Requirements:**\n• Unit: pragmas verified after open\n• Unit: retry helper backs off and retries on lock error, gives up at deadline\n• Stress: parallel writers do not surface `SQLITE_BUSY` to caller (matches §6.1)\n\nSource: internal/specs/capo-SPEC.md Sections 6.1, 7.3 (Retry Helper Contract), 9.1",
+  "activeForm": "Implementing SQLite store with retry helper",
+  "status": "completed",
+  "blocks": [
+    "8",
+    "15",
+    "18",
+    "21",
+    "24",
+    "32",
+    "55",
+    "56"
+  ],
+  "blockedBy": [
+    "5"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "SQLite hardening",
+    "task_uid": "internal/specs/capo-SPEC.md:store:setup:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

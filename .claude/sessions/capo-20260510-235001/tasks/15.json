@@ -1,0 +1,29 @@
+{
+  "id": "15",
+  "subject": "Implement per-thread conversation memory with ModelMessage persistence",
+  "description": "Build `capo/memory/conversation.py` — per-(`user_id`, `thread_id`) `ModelMessage` history persisted via Pydantic AI's `ModelMessage` JSON serialization. Composite primary key `(user_id, thread_id, message_index)`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `thread_id = \"amc:<channel_id>\"`.\n- [ ] `load_history(user_id, thread_id, session_id)` returns the messages for the current session in order.\n- [ ] `append_messages(user_id, thread_id, session_id, messages)` writes via the BEGIN IMMEDIATE retry helper.\n- [ ] Composite PK `(user_id, thread_id, message_index)` enforced.\n- [ ] On each turn, the dispatcher loads all messages for `(user_id, thread_id)` in the current session and feeds them into `agent.run(... message_history=...)`.\n\n_Edge Cases:_\n- [ ] First message in a thread: returns empty history, session is created (see session task).\n- [ ] Two writers for the same thread serialize via the retry helper.\n\n**Testing Requirements:**\n• Unit: roundtrip Pydantic AI `ModelMessage` JSON serialize/deserialize (anchors spike S-4 risk note in §13)\n• Integration: append + load preserves order across turns\n• Integration: two threads' histories never bleed into each other\n\nSource: internal/specs/capo-SPEC.md Sections 5.7, 7.3, 9.1",
+  "activeForm": "Implementing conversation memory",
+  "status": "completed",
+  "blocks": [
+    "16",
+    "11",
+    "18",
+    "22",
+    "54"
+  ],
+  "blockedBy": [
+    "7",
+    "8"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Conversation Memory",
+    "task_uid": "internal/specs/capo-SPEC.md:memory:conversation:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

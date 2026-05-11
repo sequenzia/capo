@@ -1,0 +1,25 @@
+{
+  "id": "9",
+  "subject": "Implement SOUL + ops prompt loader",
+  "description": "In `capo/agent.py`, on boot: read `souls/<active>.md` (path from `config.toml [soul] active/dir`) and prepend it to `prompts/system.md`. Construct the composite instructions string once per process and pass to `Agent(instructions=<composite>)`.\n\nCreate exemplar files: `souls/default.md`, `souls/concise.md`, `prompts/system.md`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] On boot, `capo/agent.py` reads `souls/<active>.md` and prepends to `prompts/system.md`.\n- [ ] Composite instructions string constructed exactly once per process; agent created with `instructions=<composite>`.\n- [ ] Default model read from `config.toml [models] default`; configurable via config edit + restart only (no per-run override in V1).\n- [ ] Two soul files exist: `souls/default.md`, `souls/concise.md`.\n- [ ] SOUL file > 50 lines: boot succeeds, warning logged (\"SOUL is longer than recommended\").\n\n_Edge Cases:_\n- [ ] Active soul file missing: boot fails with clear error citing the path checked.\n- [ ] `prompts/system.md` missing: boot fails with clear error.\n\n**Testing Requirements:**\n• Unit: composite instructions equal `<soul>\\n\\n<system_prompt>`\n• Unit: missing soul → boot error with path\n• Unit: missing system.md → boot error\n• Unit: SOUL file > 50 lines triggers warning\n\nSource: internal/specs/capo-SPEC.md Sections 5.1, 9.1",
+  "activeForm": "Implementing SOUL + ops prompt loader",
+  "status": "completed",
+  "blocks": [
+    "14",
+    "18"
+  ],
+  "blockedBy": [
+    "6"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Agent Loop with SOUL + Ops Prompt",
+    "task_uid": "internal/specs/capo-SPEC.md:soul:loader:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

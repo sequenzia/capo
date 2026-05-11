@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019e1450-1553-7e83-83e9-5d7649363e99"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"PING"}}
+{"type":"turn.completed","usage":{"input_tokens":55525,"cached_input_tokens":49408,"output_tokens":47,"reasoning_output_tokens":33}}

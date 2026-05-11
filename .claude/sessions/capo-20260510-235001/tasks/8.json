@@ -1,0 +1,31 @@
+{
+  "id": "8",
+  "subject": "Set up Alembic and write initial state.db migration",
+  "description": "Configure Alembic to manage `state.db` schema only (DBOS owns its own `dbos.db`). Write `migrations/001_init.py` creating all tables and indexes per §7.3 SQL definitions.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `alembic.ini` and `migrations/env.py` configured to target `state.db`.\n- [ ] Initial migration creates: `users`, `sessions`, `conversation_history`, `delegations`, `delegation_output`, `delegation_heartbeats`, `daily_costs`.\n- [ ] All indexes from §7.3 created (e.g. `idx_sessions_user_thread_active`, `idx_history_session`, `idx_delegations_user_status`, etc.).\n- [ ] Foreign key references defined per the ER diagram.\n- [ ] Migration runs idempotently against an empty `state.db`.\n\n_Edge Cases:_\n- [ ] Migration handles repeated `alembic upgrade head` runs.\n- [ ] `approvals` table is intentionally NOT in this migration (added in Phase 4).\n\n**Testing Requirements:**\n• Integration: `alembic upgrade head` against a fresh SQLite produces all tables with expected columns and indexes\n• Integration: foreign-key constraints enforced (insert into delegation referencing missing user fails)\n\nSource: internal/specs/capo-SPEC.md Sections 7.3, 9.1",
+  "activeForm": "Setting up Alembic with initial migration",
+  "status": "completed",
+  "blocks": [
+    "15",
+    "16",
+    "18",
+    "34",
+    "38"
+  ],
+  "blockedBy": [
+    "7"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Alembic setup",
+    "task_uid": "internal/specs/capo-SPEC.md:migrations:init:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path",
+    "produces_for": [
+      "15"
+    ]
+  }
+}

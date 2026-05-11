@@ -1,0 +1,27 @@
+{
+  "id": "16",
+  "subject": "Implement implicit session creation on first thread message",
+  "description": "Add session lifecycle to `capo/memory/conversation.py`: on first message in a `(user_id, thread_id)`, insert a `sessions` row. At most one active session per `(user_id, thread_id)` (enforced by `idx_sessions_user_thread_active`).\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] On first turn for `(user_id, thread_id)`, a `sessions` row is inserted with `started_at = NOW()`, `ended_at = NULL`, `compacted_to_message_index = 0`.\n- [ ] Subsequent turns reuse the active session.\n- [ ] V1 imposes no implicit timeout; idle-timeout-based rotation deferred.\n- [ ] Session boundary ends only via `/new` or `/clear` (slash commands wired in Phase 5).\n\n_Edge Cases:_\n- [ ] Concurrent first-message attempts for the same thread serialize correctly via the unique partial index `idx_sessions_user_thread_active`.\n\n**Testing Requirements:**\n• Unit: first-message path inserts exactly one session row\n• Unit: subsequent messages reuse the active session\n• Integration: `idx_sessions_user_thread_active` rejects a second active session for the same `(user_id, thread_id)`\n\nSource: internal/specs/capo-SPEC.md Sections 5.7, 7.3, 9.1",
+  "activeForm": "Implementing implicit session creation",
+  "status": "completed",
+  "blocks": [
+    "11",
+    "18",
+    "52"
+  ],
+  "blockedBy": [
+    "15",
+    "8"
+  ],
+  "metadata": {
+    "priority": "high",
+    "complexity": "S",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Conversation Memory",
+    "task_uid": "internal/specs/capo-SPEC.md:memory:session-create:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

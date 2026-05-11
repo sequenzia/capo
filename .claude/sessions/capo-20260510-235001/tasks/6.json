@@ -1,0 +1,33 @@
+{
+  "id": "6",
+  "subject": "Implement Pydantic Settings (config.toml + .env validation)",
+  "description": "Build `capo/config.py` with a `Settings` model (Pydantic Settings) that validates `config.toml` and `.env` at boot and fails fast on misconfig. Schema mirrors §15.3 (models, paths, soul, amc, agents, budget, shell, concurrency, retention, compaction, approval, users, observability).\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `Settings` loads `config.toml` per §15.3 and `.env` for secrets (`AMC_WEBHOOK_SECRET`, `AMC_BEARER_TOKEN`, model API keys).\n- [ ] Boot fails with a clear error when `.env` is missing `AMC_WEBHOOK_SECRET`.\n- [ ] Settings validator refuses to log secret values (`SecretStr` or equivalent).\n- [ ] `config.toml [users]` table is parsed into a sender→user_id mapping.\n- [ ] If listener bind ever changes off-loopback, validator enforces TLS configured.\n- [ ] Soul file path resolves; missing soul file raises a clear error citing the path checked.\n\n_Edge Cases:_\n- [ ] `config.toml` missing produces clear error, not a stack trace.\n- [ ] Unknown TOML keys logged as warnings, not silently dropped.\n\n_Error Handling:_\n- [ ] All validation errors include the offending key path.\n\n**Testing Requirements:**\n• Unit: each config section validates with valid + invalid inputs\n• Unit: missing `AMC_WEBHOOK_SECRET` raises clear error\n• Unit: secret values never appear in logged or repr output\n\nSource: internal/specs/capo-SPEC.md Sections 6.2, 9.1, 15.3",
+  "activeForm": "Implementing Pydantic Settings",
+  "status": "completed",
+  "blocks": [
+    "9",
+    "12",
+    "17",
+    "11",
+    "10",
+    "18",
+    "25",
+    "28",
+    "50",
+    "62"
+  ],
+  "blockedBy": [
+    "5"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Pydantic Settings",
+    "task_uid": "internal/specs/capo-SPEC.md:settings:setup:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

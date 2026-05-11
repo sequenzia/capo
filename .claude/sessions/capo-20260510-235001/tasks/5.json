@@ -1,0 +1,23 @@
+{
+  "id": "5",
+  "subject": "Scaffold capo project structure and dependencies",
+  "description": "Create the project skeleton per blueprint §\"Project structure\": `pyproject.toml`, top-level `capo/` package, basic structured logging setup, dev tool config (ruff/pytest).\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `pyproject.toml` declares project metadata and pinned core deps (Pydantic AI, FastAPI, DBOS, pydantic-settings, httpx, alembic, logfire).\n- [ ] `capo/__init__.py` exists; `capo/main.py` exposes a runnable entry point that wires settings → store → listener (stub OK at this stage).\n- [ ] `pytest`, `pytest-asyncio`, and `ruff` configured.\n- [ ] `python -m capo` (or `uv run capo`) starts and exits cleanly on a stub config.\n\n_Edge Cases:_\n- [ ] Missing `config.toml` produces a clear startup error rather than a stack trace.\n\n**Testing Requirements:**\n• Unit: package importable; entry point resolves\n• Smoke: `pytest` runs (zero tests OK at this stage)\n\nSource: internal/specs/capo-SPEC.md Section 9.1 (Project scaffold)",
+  "activeForm": "Scaffolding capo project",
+  "status": "completed",
+  "blocks": [
+    "7",
+    "18"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "S",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Project scaffold",
+    "task_uid": "internal/specs/capo-SPEC.md:scaffold:setup:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

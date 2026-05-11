@@ -1,0 +1,24 @@
+{
+  "id": "4",
+  "subject": "Run spike S-1: Codex CLI session resume mechanism",
+  "description": "Determine whether the Codex CLI supports `--resume <session_id>` or an equivalent. If not, identify and document a workaround. Produces a spec addendum to §5.4 and §7.5 that becomes a Phase 4 entry blocker.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Document Codex's exact spawn invocation (binary, flags, output format).\n- [ ] Document the event/output contract Codex emits (what Capo's reader must parse).\n- [ ] Determine if Codex supports native session resume; if yes, document the exact flag and behavior.\n- [ ] If no native resume, document the workaround (e.g., re-issue brief with prior output as context) and its trade-offs.\n\n_Edge Cases:_\n- [ ] Document Codex's behavior on stdin EOF, on SIGTERM, and on subprocess crash.\n- [ ] Document any sandbox-mode-specific differences.\n\n**Testing Requirements:**\n• Smoke: real Codex CLI invocation in a sandboxed worktree\n• Output: `internal/specs/spikes/S-1-codex-resume.md` plus pull request amending §5.4 and §7.5 of `internal/specs/capo-SPEC.md`\n\n**Output**: Findings document at `internal/specs/spikes/S-1-codex-resume.md` AND a spec amendment to §5.4 + §7.5. The amendment is a Phase 4 entry blocker.\n\nSource: internal/specs/capo-SPEC.md Section 9.0 (Spike S-1)",
+  "activeForm": "Running spike S-1 (Codex session resume)",
+  "status": "completed",
+  "blocks": [
+    "37",
+    "47",
+    "62"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "L",
+    "source_section": "9.0 Spikes",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Spike S-1 Codex Resume",
+    "task_uid": "internal/specs/capo-SPEC.md:spike:s1:001",
+    "task_group": "capo",
+    "spec_phase": 0,
+    "spec_phase_name": "Spikes"
+  }
+}

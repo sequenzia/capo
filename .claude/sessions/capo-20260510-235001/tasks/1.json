@@ -1,0 +1,22 @@
+{
+  "id": "1",
+  "subject": "Run spike S-4: AMC webhook end-to-end smoke harness",
+  "description": "Validate HMAC verification, dedupe behavior under retry, mark_read idempotency, and error-code surfacing against a real AMC instance. Produces the smoke-test harness reusable across phases.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Build a smoke-test harness that posts signed webhooks to a local Capo stand-in and verifies the listener path end-to-end.\n- [ ] Confirm AMC's `X-AMC-Delivery-Id` retry behavior (signed retries arriving within the documented window must be deduped).\n- [ ] Verify `mark_read` returns success on idempotent re-marking of the same `message_id`.\n- [ ] Capture the exact AMC error-code surface (`RATE_LIMITED`, `PLATFORM_AUTH`, `CHANNEL_NOT_FOUND`, `ATTACHMENT_TOO_LARGE`, `VALIDATION_ERROR`, `INTERNAL_ERROR`) against the real instance.\n\n_Edge Cases:_\n- [ ] Document AMC behavior on signature mismatch and on missing `X-AMC-Delivery-Id`.\n- [ ] Document AMC's retry window length and dead-letter timing.\n\n**Testing Requirements:**\n• Smoke: real AMC instance webhook + REST round-trip\n• Output: `internal/specs/spikes/S-4-amc-webhook-e2e.md` findings doc\n\n**Output**: Findings document at `internal/specs/spikes/S-4-amc-webhook-e2e.md` plus the reusable smoke-test harness.\n\nSource: internal/specs/capo-SPEC.md Section 9.0 (Spike S-4)",
+  "activeForm": "Running spike S-4 (AMC webhook end-to-end)",
+  "status": "completed",
+  "blocks": [
+    "18"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.0 Spikes",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Spike S-4 AMC Webhook E2E",
+    "task_uid": "internal/specs/capo-SPEC.md:spike:s4:001",
+    "task_group": "capo",
+    "spec_phase": 0,
+    "spec_phase_name": "Spikes"
+  }
+}

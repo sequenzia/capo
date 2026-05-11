@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+uv.lock
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local config + secrets (never commit)
+.env
+.env.*
+!.env.example
+config.toml
+
+# Capo runtime state
+~/.capo/
+.capo/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log

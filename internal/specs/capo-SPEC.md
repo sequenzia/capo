@@ -295,9 +295,14 @@ flowchart LR
 - [ ] `delegate_to_codex` accepts `CodexBrief` with `goal`, `repo_path`, `sandbox` (default from config), `constraints`, `success_criteria`, `relevant_files`, `model` (optional).
 - [ ] Same lifecycle as CC: persist row → spawn → register DBOS workflow → return handle.
 - [ ] `check_delegation_status`, `get_delegation_output`, `kill_delegation` work for Codex delegations identically.
-- [ ] DBOS monitor uses the same `monitor_delegation` workflow, dispatching to a per-agent reader strategy (CC reads `--output-format json` events; Codex reads its equivalent — finalized after spike).
-- [ ] Codex resume mechanism mirrors CC's `--resume <session_id>` contract. If the Codex CLI does not support session resume natively (see spike S-1), the spec is amended to a workaround before Phase 4 commits.
-- [ ] **Phase 4 entry blocker.** Do not create or execute Codex implementation tasks until S-1 has amended §5.4 and §7.5 with the exact spawn invocation, event/output contract, resume mechanism, and fallback behavior if native resume is unavailable.
+- [ ] DBOS monitor uses the same `monitor_delegation` workflow, dispatching to a per-agent reader strategy (CC reads `--output-format stream-json` events; Codex reads `codex exec --json` JSONL events — see §7.5 "Integration: Codex CLI" and spike S-1).
+- [ ] Codex resume mechanism mirrors CC's `--resume <session_id>` contract. **S-1 (2026-05-10) confirmed native resume is supported via `codex exec resume <session_id>`; no workaround needed.** See §7.5 for the exact spawn + resume invocations.
+- [ ] **Phase 4 entry criterion (resolved).** Spike S-1 has amended §5.4 and §7.5 with the exact spawn invocation, event/output contract, and native resume mechanism. Phase 4 implementation tasks may now be created.
+- [ ] Capo MUST NOT pass `--ephemeral` for Codex delegations (it disables rollout persistence, breaking resume).
+- [ ] Capo MUST pin `codex>=0.130.0` (the version validated by S-1); re-run S-1 on minor-version bumps before promoting.
+- [ ] Capo's resume code path MUST omit `--sandbox`, `--ask-for-approval`, `-C/--cd`, and `--add-dir` (those flags error on `codex exec resume`; sandbox + working-root are inherited from the original rollout).
+
+> _Updated by spike S-1 on 2026-05-10._
 
 ---
 
@@ -1104,27 +1109,106 @@ Known AMC error codes: `RATE_LIMITED`, `PLATFORM_AUTH`, `CHANNEL_NOT_FOUND`, `AT
 
 #### Integration: Claude Code CLI
 
-**Spawn invocation** (provisional until spike S-3 replaces `<some_capture_mechanism>` with the confirmed session-id capture contract):
+**Spawn invocation** (finalized by spike S-3, 2026-05-10 — see `internal/specs/spikes/S-3-cc-json-schema.md`):
 ```bash
 claude -p "<rendered_brief>" \
-       --output-format json \
+       --output-format stream-json \
+       --verbose \
        --permission-mode <config.agents.claude_code.default_permission_mode> \
-       [--model <brief.model>] \
-       --session-id-output <some_capture_mechanism>
+       [--model <brief.model>]
 ```
+
+`session_id_subagent` is captured by reading the **first JSON line** from the subprocess's stdout — every event in the `stream-json` stream carries a top-level `session_id` string field. `--verbose` is required by the CLI when `--output-format stream-json` is used. See S-3 §4.3 for the canonical capture algorithm (line-by-line JSON parse, tolerate plain-text preamble, 30s capture timeout).
 
 **Resume invocation** (on DBOS workflow re-entry):
 ```bash
 claude --resume <session_id> \
-       --output-format json \
+       -p "<re-spawn brief>" \
+       --output-format stream-json \
+       --verbose \
        [--model <brief.model>]
 ```
 
-**Event schema** — captured by spike S-3 before Phase 2 implementation.
+Resume failures (e.g., unknown session id) emit a plain-text error line followed by a single `result` event with `is_error: true` and a *new* synthetic `session_id`. The parser MUST NOT overwrite `session_id_subagent` from a failed-resume event and MUST mark the delegation `failed`. See S-3 §4.2.
+
+**Event schema** — see `internal/specs/spikes/S-3-cc-json-schema.md`. Capo's parser depends on:
+- Top-level `type` discriminator (`system`, `assistant`, `user`, `rate_limit_event`, `result`) — treat unknown values as ignorable for forward compatibility.
+- Top-level `session_id` on every event.
+- `result.is_error` (boolean) as the **canonical** success/failure signal — `result.subtype` is informational only.
+- `result.errors[]` (array of strings) when `is_error: true`.
+- Process exit code as a secondary fast-failure signal (consistent with `is_error` in all probed scenarios).
 
 #### Integration: Codex CLI
 
-Identical lifecycle; specifics finalized after spike S-1 (session resume mechanism). **Spec amendment is a Phase 4 entry criterion**: §5.4 and §7.5 must be updated with the resolved Codex spawn invocation, event-stream contract, and resume mechanism (or workaround) before Phase 4 deliverables begin. Do not create or execute Codex implementation tasks until that amendment lands.
+Identical lifecycle to Claude Code. Spike S-1 (2026-05-10) validated `codex-cli v0.130.0` end-to-end and produced the contract below. **Capo MUST pin `codex>=0.130.0`** and re-run S-1 on minor-version bumps.
+
+**Spawn invocation** (initial delegation):
+```bash
+codex exec \
+       --json \
+       --skip-git-repo-check \
+       --sandbox <read-only|workspace-write|danger-full-access> \
+       -C <brief.repo_path> \
+       [--model <brief.model>] \
+       [--add-dir <extra_writable_dir>] \
+       [-c <key>=<value>] \
+       "<rendered_brief>"
+```
+
+Notes:
+- **`--json`** emits one JSON event per line on stdout (JSONL). Without it, stdout is human-prose only — unusable by Capo's reader.
+- **`--sandbox <mode>`** is fixed at spawn; it CANNOT be changed on resume. Default for Capo: `workspace-write`.
+- **`--skip-git-repo-check`** is required when the dispatcher's worktree may not be a git repo.
+- **`codex exec` has no `--ask-for-approval` flag** — non-interactive runs never prompt; sandbox is the only enforcement mechanism.
+- **Prompt is the trailing positional argument.** Capo SHOULD close stdin immediately after spawn (if both prompt arg AND piped stdin are present, stdin is appended as a `<stdin>` block — surprising and avoided).
+- **Capo MUST NOT pass `--ephemeral`** — it disables rollout persistence and breaks resume.
+
+**Resume invocation** (on DBOS workflow re-entry):
+```bash
+codex exec resume \
+       --json \
+       --skip-git-repo-check \
+       [--model <brief.model>] \
+       <session_id> \
+       "<continuation_prompt>"
+```
+
+Notes:
+- **`<session_id>`** is the `thread_id` UUID captured from the initial spawn's first stdout line (see event schema below).
+- **`codex exec resume` does NOT accept `--sandbox`, `--ask-for-approval`, `-C`, or `--add-dir`.** Passing them errors with `error: unexpected argument '--sandbox' found`. Sandbox + working-root are inherited from the original rollout. Capo's resume code path MUST omit them.
+- **Native resume works across SIGTERM-interrupted sessions.** Codex persists the rollout file streamingly, and `codex exec resume` reattaches even when the prior turn never reached `turn.completed`. No workaround required.
+
+**Session storage** (informational, for debugging):
+- Codex writes each session to `~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-<ISO-ts>-<thread_id>.jsonl`. Capo logs `thread_id` alongside the delegation row so operators can locate the rollout file.
+
+**Event schema** (stdout JSONL — Capo's reader contract):
+
+| `type` | When | Capo's use |
+|--------|------|------------|
+| `thread.started` | First JSON event after spawn (or resume). Always present. | **Capture `thread_id` here.** Persist to delegation row before yielding. |
+| `turn.started` | Turn begins. | Mark turn boundary. |
+| `item.started` | Tool/file/command begins (optional — short items skip). | Live progress. |
+| `item.completed` | Each completed output item. At least one per turn. | Aggregate output. |
+| `turn.completed` | Turn ends (success). Carries `usage` block: `{input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens}`. | Completion + cost accounting. |
+
+`item.completed` item subtypes: `agent_message` (`{id, type, text}`), `file_change` (`{id, type, changes:[{path, kind}], status}`), `command_execution` (`{id, type, command, aggregated_output, exit_code, status}`). The `reasoning` subtype appears in the persisted rollout only; it is NOT surfaced on stdout.
+
+**Reader robustness**:
+- Capo's reader MUST tolerate non-JSON prefix lines on stdout — codex prints `Reading additional input from stdin...` (human-readable) before the first JSON line. Skip until a line parses as JSON.
+- "stdout closed without `turn.completed`" means the run was interrupted (SIGTERM, crash). The persisted rollout still exists and `codex exec resume <thread_id>` will reattach.
+- Invalid session id on resume produces a non-zero exit and stderr `Error: thread/resume: thread/resume failed: no rollout found for thread id <id> (code -32600)`. Capo MUST surface this as a hard `DelegationError` and not blindly retry the same id.
+
+**Sandbox-mode-specific differences**:
+- All three sandbox modes (`read-only`, `workspace-write`, `danger-full-access`) emit the **same** stdout JSONL event taxonomy. Capo's reader is sandbox-agnostic.
+- Sandbox mode is recorded in the persisted rollout's `session_meta` event for post-hoc audit.
+- Capo MUST NOT enable `danger-full-access` except for explicitly-flagged operator briefs (and SHOULD require approval flow §5.8 before doing so).
+
+**Concurrency**:
+- The rollout file is append-only. Capo MUST serialize `codex exec resume` calls per `thread_id` (enforced by the dispatcher's per-channel mutex and the delegation row's `status=running` guard).
+
+For the full spike details and sample artifacts see `internal/specs/spikes/S-1-codex-resume.md` and `internal/specs/spikes/S-1-samples/`.
+
+> _Updated by spike S-1 on 2026-05-10._
 
 ### 7.6 Technical Constraints
 
@@ -1451,7 +1535,7 @@ The runbook (deliverable in Phase 5) covers at minimum:
 |------------|---------------------|------------|
 | Pydantic AI | Pinned in `pyproject.toml`/lockfile once Phase 1 starts; upgrades require conversation-history round-trip tests | Unit + integration tests for `ModelMessage` serialization |
 | DBOS Python SDK | Pinned before Phase 3; S-2 records the validated SQLite backend version | Phase 3 DBOS concurrency/restart tests |
-| Claude Code CLI | Minimum version established by S-3 and enforced at boot with `claude --version` | Boot-time pre-check fails fast if below supported version |
+| Claude Code CLI | **Minimum: `2.1.138`** (established by spike S-3, see `internal/specs/spikes/S-3-cc-json-schema.md`). Enforced at boot with `claude --version`. | Boot-time pre-check fails fast if below `2.1.138`. Bumping the minimum requires updating S-3 findings and rerunning Phase 2 integration tests. |
 | Codex CLI | Minimum version established by S-1 and enforced at boot with `codex --version` when `agents.codex.enabled=true` | Boot-time pre-check fails fast if below supported version |
 | Litestream | Minimum version recorded when Phase 5 restore exercise passes | Restore exercise must cover both `state.db` and `dbos.db` |
 
@@ -1600,6 +1684,8 @@ logfire_enabled = true
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | Initial | 2026-05-10 | Stephen Sequenzia | Initial spec compiled from blueprint + adaptive interview |
+| S-1     | 2026-05-10 | Spike S-1          | §5.4 + §7.5 amended with Codex CLI v0.130.0 spawn invocation, JSONL event contract, and native `codex exec resume <session_id>` resume mechanism (no workaround needed). Phase 4 entry blocker resolved. |
+| Phase 1 | 2026-05-10 | Phase 1 build      | Phase 1 checkpoint complete: HMAC verify + dedupe listener (§5.2, §7.4), per-channel dispatcher (§5.2), per-user sender resolution (§5.11), conversation memory + session lifecycle (§5.7), basic agent + tools (§5.1), AMC REST client (§7.5), SOUL + ops prompt loader (§5.1), Pydantic Settings + secrets (§6.2, §15.3), SQLite hardening + retry helper (§6.1, §7.3), Alembic initial migration (§7.3), boot-time unread sweep (§5.2). All automated acceptance criteria green; manual demo (text "hi" via real AMC) is the user's gate. |
 
 ---
 

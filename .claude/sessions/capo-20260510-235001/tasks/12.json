@@ -1,0 +1,31 @@
+{
+  "id": "12",
+  "subject": "Implement AMC REST client with idempotency and typed error codes",
+  "description": "Build `capo/transport/amc_client.py` — REST wrapper for `GET /messages/unread`, `POST /messages/send`, `POST /messages/mark_read`. Per §7.5 contract: every request includes `Authorization: Bearer $AMC_BEARER_TOKEN`, `X-Agent-ID: capo`, and `Content-Type: application/json`. Outbound `send` includes a freshly-generated UUIDv4 `Idempotency-Key`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] `send(channel_id, text, reply_to_message_id=None, approval=None, idempotency_key=None)` posts per §7.5 contract; returns `{message_id, channel_id, status}`.\n- [ ] `get_unread()` returns `list[AMCInboundEnvelope]` per §7.5 unread contract.\n- [ ] `mark_read(message_ids)` returns `{marked_read, already_read}`; idempotent by `message_id`.\n- [ ] Every outbound request sets `X-Agent-ID: capo` header.\n- [ ] Typed exceptions per AMC error code: `RateLimited`, `PlatformAuth`, `ChannelNotFound`, `AttachmentTooLarge`, `ValidationError`, `AMCInternalError`.\n- [ ] `RATE_LIMITED` is retried automatically honoring `Retry-After`; `PLATFORM_AUTH`, `CHANNEL_NOT_FOUND`, `ATTACHMENT_TOO_LARGE` are NOT retried.\n- [ ] Transient 5xx and `RATE_LIMITED` retries on `unread` and `mark_read`.\n\n_Edge Cases:_\n- [ ] Same `Idempotency-Key` does not produce duplicate user-visible messages on retry.\n- [ ] `mark_read` repeated on already-read `message_id` succeeds as no-op.\n\n_Error Handling:_\n- [ ] Error response shape parsed per §7.5: `{ \"error\": { \"code\", \"message\", \"retry_after_seconds\"? } }`.\n\n**Testing Requirements:**\n• Unit: each error code maps to its typed exception\n• Unit: `Idempotency-Key` header generated per call\n• Unit: `X-Agent-ID: capo` header present on all outbound calls\n• Integration: `RATE_LIMITED` honors `Retry-After` and retries\n\nSource: internal/specs/capo-SPEC.md Sections 5.2, 7.5, 9.1",
+  "activeForm": "Implementing AMC client",
+  "status": "completed",
+  "blocks": [
+    "11",
+    "13",
+    "18",
+    "33",
+    "34",
+    "39",
+    "49",
+    "56"
+  ],
+  "blockedBy": [
+    "6"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "AMC Webhook Listener + Dispatcher",
+    "task_uid": "internal/specs/capo-SPEC.md:amc-client:client:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "14",
+  "subject": "Implement basic Pydantic AI agent with web_search and fetch_url tools",
+  "description": "Wire up the Pydantic AI agent in `capo/agent.py` (using the SOUL+ops loader output) and register the basic non-coding tools in `capo/tools/basic.py`: `web_search`, `fetch_url`.\n\n**Acceptance Criteria:**\n\n_Functional:_\n- [ ] Pydantic AI `Agent` is constructed once per process with `instructions=<composite>`, deps_type=`CapoDeps`, model from `config.models.default`.\n- [ ] `web_search(query: str) -> list[SearchResult]` tool implemented and registered.\n- [ ] `fetch_url(url: str) -> str` tool implemented and registered (with reasonable max body size).\n- [ ] Agent supports `agent.run(text, message_history=..., deps=...)` returning a reply string.\n\n_Edge Cases:_\n- [ ] `fetch_url` non-2xx response returns a structured error to the agent, not an exception.\n- [ ] `web_search` empty query rejected with clear tool error.\n\n_Error Handling:_\n- [ ] Tool exceptions logged but never crash the agent loop.\n\n**Testing Requirements:**\n• Unit: agent constructs successfully with composite instructions\n• Unit: each tool has happy path + one error case test\n• Unit: SOUL is absent from any rendered tool/system prompt other than agent instructions (anchoring §5.1)\n\nSource: internal/specs/capo-SPEC.md Sections 5.1, 9.1",
+  "activeForm": "Implementing basic agent and tools",
+  "status": "completed",
+  "blocks": [
+    "11",
+    "18",
+    "26",
+    "53"
+  ],
+  "blockedBy": [
+    "9"
+  ],
+  "metadata": {
+    "priority": "critical",
+    "complexity": "M",
+    "source_section": "9.1 Phase 1",
+    "spec_path": "internal/specs/capo-SPEC.md",
+    "feature_name": "Agent Loop with SOUL + Ops Prompt",
+    "task_uid": "internal/specs/capo-SPEC.md:agent:basic:001",
+    "task_group": "capo",
+    "spec_phase": 1,
+    "spec_phase_name": "Foundation + Echo Path"
+  }
+}
