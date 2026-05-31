@@ -1,4 +1,4 @@
-# Capo — The Boss of your Agents
+# Capo - The Boss of your Agents
 
 Capo is a personal AI orchestrator that lives in a single long-lived Python
 process. It ingests chat messages (iMessage/Discord) via the AMC platform,
@@ -101,4 +101,4 @@ annotations in `internal/specs/capo-SPEC.md` for per-phase state.
 
 ## License
 
-Proprietary.
+MIT
