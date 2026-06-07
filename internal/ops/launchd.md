@@ -143,7 +143,7 @@ launchctl list | grep "com\.${USER_SHORT}\.capo"
 Cross-check with the local healthz endpoint (Task #56):
 
 ```bash
-curl -fsS http://127.0.0.1:8000/healthz | jq .
+curl -fsS http://127.0.0.1:8090/healthz | jq .
 ```
 
 Tail logs:
@@ -197,7 +197,7 @@ five steps must pass before marking the plist "deployed".
 
 1. **Load.** Bootstrap per §1.3. `launchctl list | grep capo` shows a numeric
    PID (not `-`).
-2. **Start.** `curl http://127.0.0.1:8000/healthz` returns 200 within ~5s of
+2. **Start.** `curl http://127.0.0.1:8090/healthz` returns 200 within ~5s of
    bootstrap. Tail `stderr.log` for any boot-time error.
 3. **Survive SIGTERM.** Capture the PID, then:
    ```bash

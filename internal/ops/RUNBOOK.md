@@ -245,7 +245,7 @@ After §2.1-§2.5, the system is staged but Capo is NOT running yet — that's
 ls ~/.capo/state.db                         # → exists
 plutil -lint ~/Library/LaunchAgents/com.${USER_SHORT}.capo.plist   # → OK
 brew services list | grep litestream        # → started
-uv run python -c "from capo.config import load_settings; load_settings()"  # exits 0
+uv run python -c "from capo.config import Settings; Settings.load('./config.toml')"  # exits 0
 ```
 
 ### 2.7 What could go wrong
@@ -913,7 +913,7 @@ across the file boundary).
 ### 9.5 Retention pruning
 
 Capo prunes `delegation_output` chunks older than
-`[retention].delegation_output_days` (default 7) on a nightly schedule
+`[retention].delegation_output_days` (default 14) on a nightly schedule
 (§5.12 / Task #54). Verify it runs:
 
 ```bash
